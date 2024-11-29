@@ -9,7 +9,8 @@ def test_get_all_tickers():
 def test_get_tic_data_in_range():
     print("Testing get_tic_data_in_range...")
     ticker = "BBCA"
-    start_date = "2024-11-22"
+    # tickers = "BOAT"
+    start_date = "2002-11-22"
     end_date = "2024-11-22"
     data = get_tic_data_in_range(ticker, start_date, end_date)
     print(f"Trading data for {ticker} from {start_date} to {end_date}:", data)

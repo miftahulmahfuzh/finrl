@@ -53,32 +53,46 @@ def fetch_data_batch():
         # rows = []  # Collect rows for the current date
         # for tic in tqdm(all_tickers, total=len(all_tickers)):
         print(f"Processing {tic}..")
-        for i, current_date in tqdm(enumerate(daterange(START_DATE, END_DATE), start=1), total=total_days):
-            day_name = get_day_name(current_date)
-            if day_name in ["Saturday", "Sunday"]:
-                continue
+        # for i, current_date in tqdm(enumerate(daterange(START_DATE, END_DATE), start=1), total=total_days):
+        #     day_name = get_day_name(current_date)
+        #     if day_name in ["Saturday", "Sunday"]:
+        #         continue
 
-            data = {}
-            try:
-                data = get_tic_data_in_range(tic, current_date, current_date)[0]
-            except:
-                continue
-                # print(f"Failed to get {tic} on date {current_date}. day: {day_name}")
-                # skip_tickers.append(tic)
-                # return None
-            if not data:
-                continue
+        #     data = {}
+        #     try:
+        #         data = get_tic_data_in_range(tic, current_date, current_date)[0]
+        #     except:
+        #         continue
+        #         # print(f"Failed to get {tic} on date {current_date}. day: {day_name}")
+        #         # skip_tickers.append(tic)
+        #         # return None
+        #     if not data:
+        #         continue
+        list_data = []
+        try:
+            list_data = get_tic_data_in_range(tic, START_DATE, END_DATE)
+        except:
+            continue
+            # print(f"Failed to get {tic} on date {current_date}. day: {day_name}")
+            # skip_tickers.append(tic)
+            # return None
+        # if not list_data:
+        #     continue
+        assert(len(list_data) > 0)
+
+        for i, data in tqdm(enumerate(list_data, start=1), total=len(list_data)):
 
             row = {
-                "date": current_date,
+                "date": data.get("transactionDate"),
                 "open": data.get("openPrice"),
                 "high": data.get("highPrice"),
                 "low": data.get("lowPrice"),
                 "close": data.get("closePrice"),
-                "volume": data.get("totalVolume"),
+                "volume": data.get("volume"),
                 "tic": tic,
                 "day": i
             }
+            # print(row)
             # rows.append(row)
             FILENAME = f"{CSV_DIR}/{tic}_api_data_{START_DATE}_{END_DATE}.csv"
             new_data = pd.DataFrame([row])
