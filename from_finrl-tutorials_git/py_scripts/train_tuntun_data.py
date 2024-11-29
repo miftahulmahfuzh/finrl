@@ -1,5 +1,6 @@
 # this training code is taken from:
 # https://github.com/AI4Finance-Foundation/FinRL-Tutorials/blob/master/1-Introduction/FinRL_Ensemble_StockTrading_ICAIF_2020.ipynb
+# local jupyter is in trading_model/from_finrl-tutorials_git/load_tuntun_data.ipynb
 import pandas as pd
 
 import warnings
