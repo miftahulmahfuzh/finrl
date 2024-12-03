@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 
-def create_detailed_actions_excel(tickers, history_action, history_amount, turbulence_array, turbulence_bool):
+def create_detailed_actions_excel(
+        excel_path, tickers, history_action, history_amount, turbulence_array, turbulence_bool):
     """
     Create an Excel file with detailed trading actions for tickers bought at least once.
 
@@ -36,6 +37,7 @@ def create_detailed_actions_excel(tickers, history_action, history_amount, turbu
     data_rows = []
 
     # Iterate through days in the history_action
+    printed = False
     for day, day_actions in history_action.items():
 
         # Add turbulence value on that day
@@ -55,6 +57,9 @@ def create_detailed_actions_excel(tickers, history_action, history_amount, turbu
         for ticker in bought_tickers:
             # Find the index of the ticker in the original tickers list
             ticker_index = tickers_list.index(ticker)
+            if ticker == "ADMG" and not printed:
+                print(f"ADMG TICKER_INDEX: {ticker_index}")
+                printed = True
 
             # Get the action for this specific ticker
             if ticker_index < len(day_actions):
@@ -76,9 +81,9 @@ def create_detailed_actions_excel(tickers, history_action, history_amount, turbu
     df = pd.DataFrame(data_rows, columns=columns)
 
     # Save to Excel
-    df.to_excel('detailed_actions.xlsx', sheet_name='detailed_actions', index=False)
+    df.to_excel(excel_path, sheet_name='detailed_actions', index=False)
 
-    print(f"Excel file 'detailed_actions.xlsx' has been created successfully.")
+    print(f"Detailed actions is saved to\n{excel_path}")
     print(f"Number of tickers with at least one buy action: {len(bought_tickers)}")
 
     return df

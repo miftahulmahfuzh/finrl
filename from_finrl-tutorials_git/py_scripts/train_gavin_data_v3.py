@@ -31,16 +31,19 @@ def df_to_array(df, tech_indicator_list):
     tech_array[tech_inf_positions] = 0
     return price_array, tech_array, turbulence_array, unique_ticker
 
-d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_data"
-processed_fout = f"{d}/processed_load_tuntun_data_v3.csv"
-processed = pd.read_csv(processed_fout)
+# d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_data"
+# processed_fout = f"{d}/processed_load_tuntun_data_v3.csv"
+# processed = pd.read_csv(processed_fout)
+
+fprocessed = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/processed_by_gavin/preprocessed_data_with_features.csv"
+processed = pd.read_csv(fprocessed)
 
 print(INDICATORS)
 env = StockTradingEnv
 drl_lib = "elegantrl"
 
-train_processed = processed[processed["day"] < 442]
-test_processed = processed[processed["day"] >= 442]
+train_processed = processed[processed["day"] <= 7450]
+test_processed = processed[processed["day"] > 7450]
 # price_array, tech_array, turbulence_array = df_to_array(train_processed, INDICATORS)
 
 # env_config = {
@@ -51,13 +54,14 @@ test_processed = processed[processed["day"] >= 442]
 # }
 # env_instance = env(config=env_config)
 ERL_PARAMS = {"learning_rate": 3e-6,"batch_size": 2048,"gamma":  0.985,
-        "seed":312,"net_dimension":[128,64], "target_step":5, "eval_gap":30,
+        "seed":312,"net_dimension":[128,64], "target_step":5000, "eval_gap":30,
         "eval_times":1}
 
 # read parameters
 model_name = "ppo"
-d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git"
-cwd = f"{d}/tuntun_papertrading_erl/{model_name}"
+cwd = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/gavin_data_erl/{model_name}"
+# d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git"
+# cwd = f"{d}/tuntun_papertrading_erl/{model_name}"
 test_price_array, test_tech_array, test_turbulence_array, tickers = df_to_array(test_processed, INDICATORS)
 env_config = {
     "price_array": test_price_array,
@@ -88,4 +92,5 @@ turbulence_bool = env_instance.turbulence_bool
 # print(tickers)
 # print(history_action)
 # print(history_amount)
-# create_detailed_actions_excel(tickers, history_action, history_amount, test_turbulence_array, turbulence_bool)
+excel_file = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/processed_by_gavin/detailed_actions.xlsx"
+create_detailed_actions_excel(excel_file, tickers, history_action, history_amount, test_turbulence_array, turbulence_bool)

@@ -1,3 +1,5 @@
+# this script use portfolio optimization (EIIE) on andrew's data
+
 import pandas as pd
 
 raw_df = pd.read_csv("/home/devmiftahul/trading_model/tuntun_data/Daily93Tuntun_2010-2021.csv")
