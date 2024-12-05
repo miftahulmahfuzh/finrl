@@ -13,9 +13,11 @@ print(device)
 
 features_csv = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_scripts/processed_data/100_tickers_with_features.csv"
 processed = pd.read_csv(features_csv)
-df = processed.copy()
-tickers = sorted(df.tic.unique())
+tickers = sorted(processed.tic.unique())
 print(f"TOTAL TICKERS: {len(tickers)}")
+tickers = tickers[:10]
+print(tickers)
+processed = processed[processed["tic"].isin(tickers)]
 
 TRAIN_START_DATE = '2020-01-01'
 TRAIN_END_DATE = '2022-12-31'
@@ -24,27 +26,27 @@ TEST_END_DATE = '2023-12-31'
 df_portfolio_train, df_portfolio_test = split_data_based_on_date(
         processed, TRAIN_START_DATE, TRAIN_END_DATE, TEST_START_DATE, TEST_END_DATE)
 
-TIME_WINDOW = 63
-features=["close", "high", "low"]
+TIME_WINDOW = 50
+features=["close", "high", "low", "open"]
 initial_features = len(features)
 
 environment_train = PortfolioOptimizationEnv(
         df_portfolio_train,
-        initial_amount=100000,
+        initial_amount=100000000,
         comission_fee_pct=0.0025,
         time_window=TIME_WINDOW,
         features=features,
-        time_column="day",
+        time_column="date",
         normalize_df=None, # dataframe is already normalized
         tics_in_portfolio=tickers
     )
 environment_test = PortfolioOptimizationEnv(
         df_portfolio_test,
-        initial_amount=100000,
+        initial_amount=100000000,
         comission_fee_pct=0.0025,
         time_window=TIME_WINDOW,
         features=features,
-        time_column="day",
+        time_column="date",
         normalize_df=None, # dataframe is already normalized
         tics_in_portfolio=tickers
     )
@@ -61,14 +63,19 @@ policy_kwargs = {
     "time_window": TIME_WINDOW
 }
 
-model = DRLAgent(environment_train).get_model("pg", device, model_kwargs, policy_kwargs)
-print("Begin Training..")
-# DRLAgent.train_model(model, episodes=1)
+MODE = "train"
+# MODE = "test"
 
-d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_api_trained_models/eiie"
+model = DRLAgent(environment_train).get_model("pg", device, model_kwargs, policy_kwargs)
+if MODE == "train":
+    print("Begin Training..")
+    DRLAgent.train_model(model, episodes=10)
+
+d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_api_trained_models/eiie_10_episodes"
 os.makedirs(d, exist_ok=True)
 model_path = f"{d}/policy_EIIE.pt"
-torch.save(model.train_policy.state_dict(), model_path)
+if MODE == "train":
+    torch.save(model.train_policy.state_dict(), model_path)
 
 EIIE_results = {
     "train": environment_train._asset_memory["final"],
@@ -77,9 +84,15 @@ EIIE_results = {
 
 # instantiate an architecture with the same arguments used in training
 # and load with load_state_dict.
-policy = EIIE(**policy_kwargs)
-policy.load_state_dict(torch.load(model_path))
+# policy = EIIE(**policy_kwargs)
+# policy.load_state_dict(torch.load(model_path))
+policy = model.train_policy
 
 # testing
 DRLAgent.DRL_validation(model, environment_test, policy=policy)
 EIIE_results["test"] = environment_test._asset_memory["final"]
+
+# detailed_actions_file = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_api_trained_models/eiie/detailed_actions.csv"
+# environment_test.save_detailed_actions(detailed_actions_file)
+# environment_test.finalize_actions(detailed_actions_file)
+# print(f"Detailed actions of the agent is saved to {detailed_actions_file}")

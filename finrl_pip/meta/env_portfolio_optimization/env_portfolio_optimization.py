@@ -141,6 +141,7 @@ class PortfolioOptimizationEnv(gym.Env):
 
         # added by miftah to record detailed actions for each day
         self._detailed_actions_memory = []
+        self._funds_on_prev_day = 0
 
         # results file
         self._results_file = self._cwd / "results" / "rl"
@@ -201,30 +202,6 @@ class PortfolioOptimizationEnv(gym.Env):
         self._terminal = False
 
     def step(self, actions):
-        """Performs a simulation step.
-
-        Args:
-            actions: An unidimensional array containing the new portfolio
-                weights.
-
-        Note:
-            If the environment was created with "return_last_action" set to
-            True, the next state returned will be a Dict. If it's set to False,
-            the next state will be a Box. You can check the observation state
-            through the attribute "observation_space".
-
-        Returns:
-            If "new_gym_api" is set to True, the following tuple is returned:
-            (state, reward, terminal, truncated, info). If it's set to False,
-            the following tuple is returned: (state, reward, terminal, info).
-
-            state: Next simulation state.
-            reward: Reward related to the last performed action.
-            terminal: If True, the environment is in a terminal state.
-            truncated: If True, the environment has passed it's simulation
-                time limit. Currently, it's always False.
-            info: A dictionary containing informations about the last state.
-        """
         self._terminal = self._time_index >= len(self._sorted_times) - 1
 
         if self._terminal:
@@ -232,74 +209,20 @@ class PortfolioOptimizationEnv(gym.Env):
             # save self._detailed_actions_memory to csv - miftah
             actions_df = pd.DataFrame(self._detailed_actions_memory)
              # Identify tickers that were bought at least once
+             # actions_df[ticker] consists of (open_price, weight, num_shares, close_price)
             tickers = [
                 col for col in actions_df.columns
-                if isinstance(actions_df[col].iloc[0], tuple) and any(actions_df[col].apply(lambda x: x[1] > 0))
+                if isinstance(actions_df[col].iloc[0], tuple) and any(actions_df[col].apply(lambda x: x[2] > 0))
             ]
 
             # Filter the DataFrame to include only these tickers and metadata columns
-            filtered_columns = ["date", "day", "funds_on_market_close"] + tickers
+            filtered_columns = ["date", "day", "funds_on_market_open"] + tickers + ["funds_on_market_close"]
             filtered_actions_df = actions_df[filtered_columns]
-            detailed_actions_file = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_api_trained_models/eiie/detailed_actions.csv"
+            detailed_actions_file = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_api_trained_models/eiie/detailed_actions_eiie.csv"
             # actions_df.to_csv(detailed_actions_file, index=False)
             filtered_actions_df.to_csv(detailed_actions_file, index=False)
-            print(f"Detailed actions saved to\n{detailed_actions_file}")
+            # print(f"Detailed actions saved to:\n{detailed_actions_file}")
 
-            metrics_df = pd.DataFrame(
-                {
-                    "date": self._date_memory,
-                    "returns": self._portfolio_return_memory,
-                    "rewards": self._portfolio_reward_memory,
-                    "portfolio_values": self._asset_memory["final"],
-                }
-            )
-            metrics_df.set_index("date", inplace=True)
-
-            fname = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/py_scripts/ei3_results/ei3_terminal.csv"
-            metrics_df.to_csv(fname, index=False)
-
-            plt.plot(metrics_df["portfolio_values"], "r")
-            plt.title("Portfolio Value Over Time")
-            plt.xlabel("Time")
-            plt.ylabel("Portfolio value")
-            plt.savefig(self._results_file / "portfolio_value.png")
-            plt.close()
-
-            plt.plot(self._portfolio_reward_memory, "r")
-            plt.title("Reward Over Time")
-            plt.xlabel("Time")
-            plt.ylabel("Reward")
-            plt.savefig(self._results_file / "reward.png")
-            plt.close()
-
-            plt.plot(self._actions_memory)
-            plt.title("Actions performed")
-            plt.xlabel("Time")
-            plt.ylabel("Weight")
-            plt.savefig(self._results_file / "actions.png")
-            plt.close()
-
-            print("=================================")
-            print("Initial portfolio value:{}".format(self._asset_memory["final"][0]))
-            print(f"Final portfolio value: {self._portfolio_value}")
-            print(
-                "Final accumulative portfolio value: {}".format(
-                    self._portfolio_value / self._asset_memory["final"][0]
-                )
-            )
-            print(
-                "Maximum DrawDown: {}".format(
-                    qs.stats.max_drawdown(metrics_df["portfolio_values"])
-                )
-            )
-            print("Sharpe ratio: {}".format(qs.stats.sharpe(metrics_df["returns"])))
-            print("=================================")
-
-            qs.plots.snapshot(
-                metrics_df["returns"],
-                show=False,
-                savefig=self._results_file / "portfolio_summary.png",
-            )
 
             if self._new_gym_api:
                 return self._state, self._reward, self._terminal, False, self._info
@@ -311,8 +234,11 @@ class PortfolioOptimizationEnv(gym.Env):
 
             # if necessary, normalize weights
             if math.isclose(np.sum(actions), 1, abs_tol=1e-6) and np.min(actions) >= 0:
+                # print(f"NO NORMALIZATION ON WEIGHTS")
                 weights = actions
+                print(f"WEIGHT FOR FUNDS: {weights[0]}")
             else:
+                # print(f"USE NORMALIZATION ON WEIGHTS")
                 weights = self._softmax_normalization(actions)
 
             # save initial portfolio weights for this time step
@@ -338,60 +264,40 @@ class PortfolioOptimizationEnv(gym.Env):
 
             # Get tickers, prices, and portfolio value - miftah
             tickers = self._info["tics"]
-            prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "close"].values
-            prices = prices.astype(int)
+            # prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "close"].values
+            # prices = prices.astype(int)
+
+            open_prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "open"].values
+            open_prices = open_prices.astype(int)
+            close_prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "close"].values
+            close_prices = close_prices.astype(int)
+
+            # Calculate initial portfolio value using open prices
+            # funds_on_market_open = np.sum(num_shares * open_prices)
+
             portfolio_value = self._portfolio_value  # Assumes this is updated in each step
+            # print(f"\nINIT PORTFOLIO VALUE ON {self._time_index}: {self._portfolio_value}")
 
-            # Calculate shares - miftah
-            num_shares = np.floor((portfolio_value * weights[1:]) / prices).astype(int)
-            last_shares = np.floor((portfolio_value * last_weights[1:]) / prices).astype(int)
-            shares_diff = num_shares - last_shares  # Shares bought/sold
-
-            # calculate weights percent - miftah
-            # weights_percent = weights[1:] * 100  # Exclude cash position (first weight)
-            # weights_percent[weights_percent < 0.1] = 0  # Set small weights to zero
-
-            # Calculate number of shares for each ticker
-            # num_shares = (portfolio_value * weights[1:]) / prices # this is in float
-            # num_shares = np.floor((portfolio_value * weights[1:]) / prices).astype(int) # this is in int
-
-            # Record daily detailed actions
-            # daily_actions = {
-            #     "date": self._info["end_time"],
-            #     "ticker": tickers,
-            #     "price": prices,
-            #     # "weight": weights[1:],  # Exclude cash position (first weight)
-            #     "weight (%)": weights_percent,
-            #     "num_shares": num_shares
-            # }
-            # self._detailed_actions_memory.append(daily_actions)
-
-            # Log daily actions - miftah
-            daily_log = {
-                "date": self._info["end_time"],
-                "day": self._time_index,
-            }
-            for i, ticker in enumerate(tickers):
-                daily_log[ticker] = (prices[i], shares_diff[i], num_shares[i])
-            daily_log["funds_on_market_close"] = portfolio_value
-            self._detailed_actions_memory.append(daily_log)
+            # Log the portfolio value for verification
+            # print(f"CHECK PORTFOLIO VALUE ON {self._time_index}: {check_portfolio_value}")
 
             # if using weights vector modifier, we need to modify weights vector
-            if self._comission_fee_model == "wvm":
-                # print(f"USING WVM")
-                delta_weights = weights - last_weights
-                delta_assets = delta_weights[1:]  # disconsider
-                # calculate fees considering weights modification
-                fees = np.sum(np.abs(delta_assets * self._portfolio_value))
-                if fees > weights[0] * self._portfolio_value:
-                    weights = last_weights
-                    # maybe add negative reward
-                else:
-                    portfolio = weights * self._portfolio_value
-                    portfolio[0] -= fees
-                    self._portfolio_value = np.sum(portfolio)  # new portfolio value
-                    weights = portfolio / self._portfolio_value  # new weights
-            elif self._comission_fee_model == "trf":
+            # if self._comission_fee_model == "wvm":
+            #     # print(f"USING WVM")
+            #     delta_weights = weights - last_weights
+            #     delta_assets = delta_weights[1:]  # disconsider
+            #     # calculate fees considering weights modification
+            #     fees = np.sum(np.abs(delta_assets * self._portfolio_value))
+            #     if fees > weights[0] * self._portfolio_value:
+            #         weights = last_weights
+            #         # maybe add negative reward
+            #     else:
+            #         portfolio = weights * self._portfolio_value
+            #         portfolio[0] -= fees
+            #         self._portfolio_value = np.sum(portfolio)  # new portfolio value
+            #         weights = portfolio / self._portfolio_value  # new weights
+            # elif self._comission_fee_model == "trf":
+            if self._comission_fee_model == "trf":
                 # print(f"USING TRF")
                 last_mu = 1
                 mu = 1 - 2 * self._comission_fee_pct + self._comission_fee_pct**2
@@ -407,19 +313,49 @@ class PortfolioOptimizationEnv(gym.Env):
                 self._portfolio_value = mu * self._portfolio_value
                 # print(f"WEIGHTS 0: {weights[0]}")
                 # print(f"CURRENT MU: {mu}")
-                # print(f"CURRENT PORTFOLIO VALUE: {self._portfolio_value}")
 
             # save initial portfolio value of this time step
             # print(f"\nTIMESTEP {self._time_index} INITIAL PORTFOLIO VALUE: {self._portfolio_value}")
             self._asset_memory["initial"].append(self._portfolio_value)
 
+            # LOG DAILY ACTIONS - MIFTAH
+            daily_log = {
+                "date": self._info["end_time"],
+                "day": self._time_index,
+            }
+            funds_on_market_open = int(self._portfolio_value)
+            if self._funds_on_prev_day:
+                funds_on_market_open = int(self._funds_on_prev_day)
+
+            daily_log["funds_on_market_open"] = funds_on_market_open
+
+            # CALCULATE SHARES - MIFTAH
+            num_shares = np.floor((funds_on_market_open * weights[1:]) / open_prices).astype(int)
+            check_portfolio_value = np.sum(num_shares * open_prices)
+
+            # Calculate final portfolio value using close prices
+            funds_on_market_close = np.sum(num_shares * close_prices)
+
             # time passes and time variation changes the portfolio distribution
             portfolio = self._portfolio_value * (weights * self._price_variation)
+            # print(f"PRICE VARIATION: {self._price_variation}")
+            # print(f"PRICE VARIATION SHAPE: {self._price_variation.shape}")
+
+            # calculate weights percent - miftah
+            weights_percent = weights[1:] * 100  # Exclude cash position (first weight)
+            weights_percent[weights_percent < 0.01] = 0  # Set small weights to zero
+            for i, ticker in enumerate(tickers):
+                daily_log[ticker] = (open_prices[i], weights_percent[i], num_shares[i], close_prices[i])
 
             # calculate new portfolio value and weights
             self._portfolio_value = np.sum(portfolio)
             weights = portfolio / self._portfolio_value
             # print(f"TIMESTEP {self._time_index} END PORTFOLIO VALUE: {self._portfolio_value}")
+
+            # daily_log["funds_on_market_close"] = self._portfolio_value
+            daily_log["funds_on_market_close"] = funds_on_market_close
+            self._funds_on_prev_day = funds_on_market_close
+            self._detailed_actions_memory.append(daily_log)
 
             # save final portfolio value and weights of this time step
             self._asset_memory["final"].append(self._portfolio_value)
@@ -446,59 +382,6 @@ class PortfolioOptimizationEnv(gym.Env):
         if self._new_gym_api:
             return self._state, self._reward, self._terminal, False, self._info
         return self._state, self._reward, self._terminal, self._info
-
-    def finalize_actions(self, file_path):
-        # Remove tickers never bought
-        bought_tickers = set()
-        # for daily in self.all_daily_actions:
-        for daily in self._detailed_actions_memory:
-            print(daily.keys())
-            for ticker, (_, _, shares_held) in daily["actions"].items():
-                if shares_held > 0:
-                    bought_tickers.add(ticker)
-
-        self.all_daily_actions = [
-            {
-                **day,
-                "actions": {ticker: action for ticker, action in day["actions"].items() if ticker in bought_tickers}
-            }
-            for day in self.all_daily_actions
-        ]
-
-        # Format data for saving
-        rows = []
-        for i, daily in enumerate(self.all_daily_actions):
-            row = {
-                "date": daily["date"],
-                "day": i + 1,
-                "turbulence": daily.get("turbulence", 0),  # Replace with actual turbulence if available
-                "sell_all": daily.get("sell_all", 0),  # Replace with actual sell_all flag if available
-            }
-
-            funds_on_market_close = daily.get("funds", 0)
-            for ticker, (price, shares, shares_held) in daily["actions"].items():
-                row[ticker] = (price, shares, shares_held)
-
-            row["funds_on_market_close"] = funds_on_market_close
-            rows.append(row)
-
-        # Convert to DataFrame
-        df = pd.DataFrame(rows)
-
-        # Save to Excel
-        # file_path = "daily_detailed_actions.xlsx"
-        df.to_excel(file_path, index=False)
-        print(f"Saved detailed actions to {file_path}")
-
-
-    def save_detailed_actions(self, file_path):
-        """Saves the detailed actions to a CSV file."""
-        all_actions = []
-        for day_actions in self._detailed_actions_memory:
-            df = pd.DataFrame(day_actions)
-            all_actions.append(df)
-        detailed_actions_df = pd.concat(all_actions, ignore_index=True)
-        detailed_actions_df.to_csv(file_path, index=False)
 
     def reset(self):
         """Resets the environment and returns it to its initial state (the

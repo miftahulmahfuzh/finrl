@@ -2,3 +2,5 @@
 temporal_data/
 csv/
 *.csv
+*.pyc
+__pycache__/
