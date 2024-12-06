@@ -1,0 +1,86 @@
+import pandas as pd
+from glob import glob
+from tqdm import tqdm
+from utils import (
+    clean_ohlcv,
+    add_needed_dates,
+    validate_tic_dates,
+)
+
+dates_file = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/dates_tuntun_api.txt"
+needed_dates = open(dates_file).read().splitlines()
+date2day = {date: day for day, date in enumerate(needed_dates)}
+
+def add_needed_dates1(dfi, needed_dates, tic):
+    # TODO: if any of date dx in needed_dates is missing from dfi["date"], then
+    # add dummy row:
+    # {"date": dx, "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1, "tic": tic}
+    #
+    dfi = dfi.drop(["day"])
+    dfi["day"] = dfi["date"].map(date2day)
+    return dfi
+
+
+d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_scripts/csv/*.csv"
+fnames = glob(d)
+print(f"Total csv in dir: {len(fnames)}")
+total_in_each_tic = {}
+list_to_redo_fetch = []
+all_df = None
+tickers = []
+# dates = []
+# max_dates = 0
+for fname in tqdm(fnames, total=len(fnames)):
+    dfi = pd.read_csv(fname)
+    dfi = clean_ohlcv(dfi)
+    tic = fname.split("/")[-1][:4]
+
+    dfi_dates = sorted(dfi["date"].unique())
+    dfi = add_needed_dates(dfi, needed_dates, tic)
+    # len_date = len(dfi_dates)
+    # if len_date > max_dates:
+    #     max_dates = len_date
+    #     dates = dfi_dates
+
+    # print(dfi)
+    # total = len(dfi)
+    # total_in_each_tic[tic] = total
+    # if total < 3627:
+    #     list_to_redo_fetch.append(tic)
+    # else:
+    if all_df is not None:
+        all_df = pd.concat([all_df, dfi], ignore_index=True)
+        tickers.append(tic)
+    else:
+        all_df = dfi
+        tickers.append(tic)
+
+# dates_str = "\n".join(dates)
+# with open("dates_tuntun_api.txt", "w+") as f:
+#     f.write(dates_str)
+
+# unique_dates = sorted(all_df["date"].unique())
+# date2day = {dt:i for i,dt in enumerate(unique_dates, start=1)}
+# all_df["day"] = all_df["date"].map(date2day)
+# all_df = all_df.sort_values(by='day', ascending=True)
+
+# # total_data_in_each_tic
+# list_to_repeat_fetch_fname = "tuntun_scripts/tics_to_repeat_fetch.txt"
+# with open(list_to_repeat_fetch_fname, "w+") as f:
+    # x = "\n".join(list_to_redo_fetch)
+    # f.write(x)
+
+# print(tickers[:10])
+# print(f"Total tickers with 3627 days: {len(tickers)}")
+# print(f"Total tickers to redo fetch: {len(list_to_redo_fetch)}")
+
+new_total_for_each_tic, total_unique_dates = validate_tic_dates(all_df)
+print("Unique dates per ticker:", new_total_for_each_tic)
+print("Total unique dates in the dataset:", total_unique_dates)
+
+start_date = needed_dates[0]
+end_date = needed_dates[-1]
+# processed_data_fname = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_scripts/processed_data/{len(tickers)}_tickers_daily.csv"
+d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/data"
+fname = f"{d}/{len(tickers)}_tickers_tuntun_api_{start_date}_{end_date}.csv"
+all_df.to_csv(fname, index=False)

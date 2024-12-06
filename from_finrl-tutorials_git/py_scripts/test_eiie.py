@@ -11,7 +11,8 @@ print(device)
 # DONT USE THIS PATH BECAUSE ALL VOLUME HERE IS 0 (bug in fetch_data_using_api.py)
 # processed_data_fname = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_scripts/processed_data/processed_data_135_tickers.csv"
 
-features_csv = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_scripts/processed_data/100_tickers_with_features.csv"
+local = "/mnt/c/Users/mahfu/Downloads/tuntun/tuntun_ubuntu/github_me/finrl/from_finrl-tutorials_git"
+features_csv = f"{local}/tuntun_scripts/processed_data/100_tickers_with_features.csv"
 processed = pd.read_csv(features_csv)
 tickers = sorted(processed.tic.unique())
 print(f"TOTAL TICKERS: {len(tickers)}")
@@ -63,15 +64,15 @@ policy_kwargs = {
     "time_window": TIME_WINDOW
 }
 
-MODE = "train"
-# MODE = "test"
+# MODE = "train"
+MODE = "test"
 
 model = DRLAgent(environment_train).get_model("pg", device, model_kwargs, policy_kwargs)
 if MODE == "train":
     print("Begin Training..")
     DRLAgent.train_model(model, episodes=10)
 
-d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_api_trained_models/eiie_10_episodes"
+d = f"{local}/tuntun_api_trained_models/eiie_10_episodes"
 os.makedirs(d, exist_ok=True)
 model_path = f"{d}/policy_EIIE.pt"
 if MODE == "train":
@@ -84,9 +85,10 @@ EIIE_results = {
 
 # instantiate an architecture with the same arguments used in training
 # and load with load_state_dict.
-# policy = EIIE(**policy_kwargs)
-# policy.load_state_dict(torch.load(model_path))
-policy = model.train_policy
+policy = EIIE(**policy_kwargs)
+policy.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+if MODE == "train":
+    policy = model.train_policy
 
 # testing
 DRLAgent.DRL_validation(model, environment_test, policy=policy)
