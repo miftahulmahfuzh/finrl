@@ -1,6 +1,8 @@
 .ipynb_checkpoints/
 temporal_data/
 csv/
+*.bak
+*.xlsx
 *.csv
 *.pyc
 __pycache__/

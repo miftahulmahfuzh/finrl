@@ -77,8 +77,9 @@ class StockTradingEnv(gym.Env):
             low=-1, high=1, shape=(self.action_dim,), dtype=np.float32
         )
         # MIFTAH'S CODE
-        self.history_action = {}
-        self.history_amount = {}
+        self.history_action = {} # detailed tuple (price, action, num_shares) on each tic on a day
+        self.history_amount = {} # amount of money the model has on a day
+        self.history_total = {} # sum(price_i*num_shares_i) for each tickers, add with amount of money
 
     def reset(
         self,
@@ -168,6 +169,8 @@ class StockTradingEnv(gym.Env):
         # added by miftah on 02-12-2024
         self.history_action[self.day] = [(int(tic_price), int(tic_action), int(tic_stock)) for tic_price, tic_action, tic_stock in zip(price, actions, self.stocks)]
         self.history_amount[self.day] = int(self.amount)
+        tmp_total = sum([(int(tic_price) * int(tic_stock)) for tic_price, tic_stock in zip(price, self.stocks)])
+        self.history_total[self.day] = tmp_total + int(self.amount)
         if INFERENCE:
             print(f"AMOUNT OF MONEY AFTER MARKET CLOSE: {self.amount}")
 

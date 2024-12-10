@@ -89,6 +89,9 @@ class PortfolioOptimizationEnv(gym.Env):
         time_window=1,
         cwd="./",
         new_gym_api=False,
+        # below is added by miftah
+        mode="train", # options: train, dev, test
+        detailed_actions_file=""
     ):
         """Initializes environment's instance.
 
@@ -129,7 +132,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._time_format = time_format
         self._tic_column = tic_column
         self._df = df
-        self._initial_amount = initial_amount
+        self._initial_amount = initial_amount # set to 1 billion
         self._return_last_action = return_last_action
         self._reward_scaling = reward_scaling
         self._comission_fee_pct = comission_fee_pct
@@ -200,29 +203,32 @@ class PortfolioOptimizationEnv(gym.Env):
 
         self._portfolio_value = self._initial_amount
         self._terminal = False
+        self._mode = mode
+        self.detailed_actions_file = detailed_actions_file
 
     def step(self, actions):
         self._terminal = self._time_index >= len(self._sorted_times) - 1
 
         if self._terminal:
 
-            # save self._detailed_actions_memory to csv - miftah
-            actions_df = pd.DataFrame(self._detailed_actions_memory)
-             # Identify tickers that were bought at least once
-             # actions_df[ticker] consists of (open_price, weight, num_shares, close_price)
-            tickers = [
-                col for col in actions_df.columns
-                if isinstance(actions_df[col].iloc[0], tuple) and any(actions_df[col].apply(lambda x: x[2] > 0))
-            ]
+            # SAVE SELF._DETAILED_ACTIONS_MEMORY TO CSV - MIFTAH
+            # if not self._is_train:
+            if True:
+                actions_df = pd.DataFrame(self._detailed_actions_memory)
+                # Identify tickers that were bought at least once
+                # actions_df[ticker] consists of (open_price, weight, num_shares, close_price)
+                tickers = [
+                    col for col in actions_df.columns
+                    if isinstance(actions_df[col].iloc[0], tuple) and any(actions_df[col].apply(lambda x: x[2] > 0))
+                ]
 
-            # Filter the DataFrame to include only these tickers and metadata columns
-            filtered_columns = ["date", "day", "funds_on_market_open"] + tickers + ["funds_on_market_close"]
-            filtered_actions_df = actions_df[filtered_columns]
-            detailed_actions_file = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_api_trained_models/eiie/detailed_actions_eiie.csv"
-            # actions_df.to_csv(detailed_actions_file, index=False)
-            filtered_actions_df.to_csv(detailed_actions_file, index=False)
-            # print(f"Detailed actions saved to:\n{detailed_actions_file}")
-
+                # Filter the DataFrame to include only these tickers and metadata columns
+                filtered_columns = ["date", "day", "funds_on_market_open"] + tickers + ["funds_on_market_close"]
+                filtered_actions_df = actions_df[filtered_columns]
+                # detailed_actions_file = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/tuntun_api_trained_models/eiie/detailed_actions_eiie.csv"
+                # actions_df.to_csv(detailed_actions_file, index=False)
+                filtered_actions_df.to_csv(self.detailed_actions_file, index=False)
+                print(f"Detailed actions saved to:\n{self.detailed_actions_file}")
 
             if self._new_gym_api:
                 return self._state, self._reward, self._terminal, False, self._info
@@ -236,7 +242,7 @@ class PortfolioOptimizationEnv(gym.Env):
             if math.isclose(np.sum(actions), 1, abs_tol=1e-6) and np.min(actions) >= 0:
                 # print(f"NO NORMALIZATION ON WEIGHTS")
                 weights = actions
-                print(f"WEIGHT FOR FUNDS: {weights[0]}")
+                # print(f"WEIGHT FOR FUNDS: {weights[0]}")
             else:
                 # print(f"USE NORMALIZATION ON WEIGHTS")
                 weights = self._softmax_normalization(actions)
@@ -245,11 +251,11 @@ class PortfolioOptimizationEnv(gym.Env):
             self._actions_memory.append(weights)
 
             # Get tickers, prices, and portfolio value
-            tickers = self._info["tics"]
-            prices = self._info["data"].loc[
-                self._info["data"]["date"] == self._info["end_time"], "close"
-            ].values
-            prices = prices.astype(int)
+            # tickers = self._info["tics"]
+            # prices = self._info["data"].loc[
+            #     self._info["data"]["date"] == self._info["end_time"], "close"
+            # ].values
+            # prices = prices.astype(int)
 
             # get last step final weights and portfolio_value
             last_weights = self._final_weights[-1]
@@ -263,14 +269,13 @@ class PortfolioOptimizationEnv(gym.Env):
             # print(f"INFO: {self._info}")
 
             # Get tickers, prices, and portfolio value - miftah
-            tickers = self._info["tics"]
-            # prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "close"].values
-            # prices = prices.astype(int)
-
-            open_prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "open"].values
-            open_prices = open_prices.astype(int)
-            close_prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "close"].values
-            close_prices = close_prices.astype(int)
+            # if not self._is_train:
+            if True:
+                tickers = self._info["tics"]
+                open_prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "open"].values
+                open_prices = open_prices.astype(int)
+                close_prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "close"].values
+                close_prices = close_prices.astype(int)
 
             # Calculate initial portfolio value using open prices
             # funds_on_market_open = np.sum(num_shares * open_prices)
@@ -319,43 +324,48 @@ class PortfolioOptimizationEnv(gym.Env):
             self._asset_memory["initial"].append(self._portfolio_value)
 
             # LOG DAILY ACTIONS - MIFTAH
-            daily_log = {
-                "date": self._info["end_time"],
-                "day": self._time_index,
-            }
-            funds_on_market_open = int(self._portfolio_value)
-            if self._funds_on_prev_day:
-                funds_on_market_open = int(self._funds_on_prev_day)
+            # if not self._is_train:
+            if True:
+                daily_log = {
+                    "date": self._info["end_time"],
+                    "day": self._time_index,
+                }
+                funds_on_market_open = int(self._portfolio_value)
+                if self._funds_on_prev_day:
+                    funds_on_market_open = int(self._funds_on_prev_day)
 
-            daily_log["funds_on_market_open"] = funds_on_market_open
+                daily_log["funds_on_market_open"] = funds_on_market_open
 
-            # CALCULATE SHARES - MIFTAH
-            num_shares = np.floor((funds_on_market_open * weights[1:]) / open_prices).astype(int)
-            check_portfolio_value = np.sum(num_shares * open_prices)
+                # CALCULATE SHARES - MIFTAH
+                num_shares = np.floor((funds_on_market_open * weights[1:]) / open_prices).astype(int)
+                # check_portfolio_value = np.sum(num_shares * open_prices)
 
-            # Calculate final portfolio value using close prices
-            funds_on_market_close = np.sum(num_shares * close_prices)
+                # Calculate final portfolio value using close prices
+                funds_on_market_close = np.sum(num_shares * close_prices)
 
             # time passes and time variation changes the portfolio distribution
             portfolio = self._portfolio_value * (weights * self._price_variation)
             # print(f"PRICE VARIATION: {self._price_variation}")
             # print(f"PRICE VARIATION SHAPE: {self._price_variation.shape}")
 
-            # calculate weights percent - miftah
-            weights_percent = weights[1:] * 100  # Exclude cash position (first weight)
-            weights_percent[weights_percent < 0.01] = 0  # Set small weights to zero
-            for i, ticker in enumerate(tickers):
-                daily_log[ticker] = (open_prices[i], weights_percent[i], num_shares[i], close_prices[i])
+            # CALCULATE WEIGHTS PERCENT - MIFTAH
+            # if not self._is_train:
+            if True:
+                weights_percent = weights[1:] * 100  # Exclude cash position (first weight)
+                weights_percent[weights_percent < 0.01] = 0  # Set small weights to zero
+                for i, ticker in enumerate(tickers):
+                    daily_log[ticker] = (open_prices[i], weights_percent[i], num_shares[i], close_prices[i])
 
             # calculate new portfolio value and weights
             self._portfolio_value = np.sum(portfolio)
             weights = portfolio / self._portfolio_value
             # print(f"TIMESTEP {self._time_index} END PORTFOLIO VALUE: {self._portfolio_value}")
 
-            # daily_log["funds_on_market_close"] = self._portfolio_value
-            daily_log["funds_on_market_close"] = funds_on_market_close
-            self._funds_on_prev_day = funds_on_market_close
-            self._detailed_actions_memory.append(daily_log)
+            # if not self._is_train:
+            if True:
+                daily_log["funds_on_market_close"] = funds_on_market_close
+                self._funds_on_prev_day = funds_on_market_close
+                self._detailed_actions_memory.append(daily_log)
 
             # save final portfolio value and weights of this time step
             self._asset_memory["final"].append(self._portfolio_value)
