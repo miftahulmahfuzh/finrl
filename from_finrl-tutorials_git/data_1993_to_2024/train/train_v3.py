@@ -2,6 +2,10 @@ import pandas as pd
 from utils import (
     split_data_based_on_date,
 )
+from utils_for_v3 import (
+    df_to_array,
+    DRLAgent,
+)
 
 # fprocessed = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/processed_by_gavin/preprocessed_data_with_features.csv"
 td = "combined_data"
@@ -16,7 +20,8 @@ print(INDICATORS)
 
 print(f"TOTAL DAYS: {len(processed['day'].unique())}")
 
-TRAIN_START_DATE = '1993-01-04'
+# TRAIN_START_DATE = '1993-01-04'
+TRAIN_START_DATE = '2022-12-04'
 TRAIN_END_DATE = '2022-12-31'
 TEST_START_DATE = '2023-01-01'
 TEST_END_DATE = '2024-12-06'
@@ -36,24 +41,34 @@ print(f"total all days in test data {len(days)}")
 # TRAIN
 price_array, tech_array, turbulence_array, train_tickers, train_dates = df_to_array(train_processed, INDICATORS)
 
+initial_total_asset = 1e8
+net_dimension = [128, 64]
 env_config = {
     "price_array": price_array,
     "tech_array": tech_array,
     "turbulence_array": turbulence_array,
     "if_train": True,
+    "initial_total_asset": initial_total_asset
 }
 env_instance = StockTradingEnv(config=env_config)
-ERL_PARAMS = {"learning_rate": 3e-6,"batch_size": 2048,"gamma":  0.985,
-        "seed":312,"net_dimension":[256,128], "target_step":5000, "eval_gap":30,
-        "eval_times":1}
-MAIN_DIR = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/model_v3"
+ERL_PARAMS = {
+    "learning_rate": 3e-6,
+    "batch_size": 2048,
+    "gamma":  0.985,
+    "seed":312,
+    "net_dimension":net_dimension,
+    "target_step":5000,
+    "eval_gap":30,
+    "eval_times":1
+}
+MAIN_DIR = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v3_result"
 
 from datetime import datetime
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 model_name = "ppo"
 cwd = f"{MAIN_DIR}/{model_name}_{timestamp}"
 
-print(f"TOTAL TICKERS: {len(tickers)}")
+print(f"TOTAL TICKERS: {len(train_tickers)}")
 
 DRLAgent_erl = DRLAgent
 break_step = 1e5
@@ -75,11 +90,11 @@ env_config = {
     "tech_array": test_tech_array,
     "turbulence_array": test_turbulence_array,
     "if_train": False,
+    "initial_total_asset": initial_total_asset
 }
 env_instance = StockTradingEnv(config=env_config)
 
 # load elegantrl needs state dim, action dim and net dim
-net_dimension = [256, 128] # ERL_PARAMS.get("net_dimension", 2**7)
 print(f"price_array: {len(test_price_array)} days")
 
 DRLAgent_erl = DRLAgent
@@ -91,6 +106,8 @@ episode_total_assets = DRLAgent_erl.DRL_prediction(
 )
 print(f"EPISODE TOTAL ASSETS: {episode_total_assets}")
 
+from utils_for_v3 import create_detailed_actions_excel
+
 # SAVE TEST RESULT
 history_action = env_instance.history_action
 history_amount = env_instance.history_amount
@@ -99,6 +116,11 @@ turbulence_bool = env_instance.turbulence_bool
 ccwd = cwd.split("/")[-1]
 excel_path = f"{MAIN_DIR}/detailed_actions_{ccwd}.xlsx"
 create_detailed_actions_excel(
-    excel_path, tickers, history_action,
-    history_amount, test_turbulence_array,
-    turbulence_bool, test_dates)
+    excel_path,
+    test_tickers,
+    history_action,
+    history_amount,
+    history_total,
+    test_turbulence_array,
+    turbulence_bool,
+    test_dates)
