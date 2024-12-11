@@ -230,7 +230,7 @@ class PortfolioOptimizationEnv(gym.Env):
         }
         return pd.DataFrame(data)
 
-    def step(self, actions):
+    def step(self, actions, episode=0):
         """Performs a simulation step.
 
         Args:
@@ -264,6 +264,10 @@ class PortfolioOptimizationEnv(gym.Env):
             print(actions_df)
             self._end_timestamp = dt.now()
             duration_df = self.calculate_duration(self._start_timestamp, self._end_timestamp)
+            if self._mode == "train":
+                tmp = self.detailed_actions_file[:-5]
+                tmp = f"{tmp}_{episode}.xlsx"
+                self.detailed_actions_file = tmp
             with pd.ExcelWriter(self.detailed_actions_file) as writer:
                 # filtered_actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
                 actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)

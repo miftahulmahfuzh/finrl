@@ -63,6 +63,7 @@ class PolicyGradient:
         self.batch_size = batch_size
         self.lr = lr
         self.action_noise = action_noise
+        print(f"SELF.ACTION_NOISE: {action_noise}")
         self.optimizer = optimizer
         self.device = device
         self._setup_train(env, self.policy, self.batch_size, self.lr, self.optimizer)
@@ -117,7 +118,8 @@ class PolicyGradient:
                 self.train_pvm.add(action)
 
                 # run simulation step
-                next_obs, reward, done, info = self.train_env.step(action)
+                episode = i
+                next_obs, reward, done, info = self.train_env.step(action, episode)
 
                 # add experience to replay buffer
                 exp = (obs, last_action, info["price_variation"], info["trf_mu"])
