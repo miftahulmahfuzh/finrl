@@ -254,7 +254,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 # # Filter the DataFrame to include only these tickers and metadata columns
                 # filtered_columns = ["date", "day", "funds_on_market_open"] + tickers + ["funds_on_market_close"]
 
-                filtered_columns = ["date", "portfolio"] + self._info["tics"].tolist()
+                filtered_columns = ["date", "portfolio", "CASH"] + self._info["tics"].tolist()
                 filtered_actions_df = actions_df[filtered_columns]
 
                 self._end_timestamp = dt.now()
@@ -385,15 +385,18 @@ class PortfolioOptimizationEnv(gym.Env):
 
             # CALCULATE WEIGHTS PERCENT - MIFTAH
             # if not self._is_train:
-            date_tmp = self._info["end_time"].strftime("%Y-%m-%d")
-            daily_log = {"date": date_tmp, "portfolio": self._portfolio_value}
-            if True:
-                weights_percent = weights[1:] * 100  # Exclude cash position (first weight)
-                weights_percent[weights_percent < 0.01] = 0  # Set small weights to zero
-                tickers = self._info["tics"]
-                for i, ticker in enumerate(tickers):
-                    # daily_log[ticker] = (open_prices[i], weights_percent[i], num_shares[i], close_prices[i])
-                    daily_log[ticker] = weights_percent[i]
+            date_str = self._info["end_time"].strftime("%Y-%m-%d")
+            daily_log = {"date": date_str, "portfolio": self._portfolio_value}
+
+            weights[np.isnan(weights)] = 0
+            if np.sum(weights) > 1:
+                weights = self._softmax_normalization(weights)
+            weights_percent = weights * 100
+            weights_percent[weights_percent < 0.01] = 0  # Set small weights to zero
+            tickers = self._info["tics"]
+            for i, ticker in enumerate(tickers):
+                # daily_log[ticker] = (open_prices[i], weights_percent[i], num_shares[i], close_prices[i])
+                daily_log[ticker] = weights_percent[i]
 
             # calculate new portfolio value and weights
             self._portfolio_value = np.sum(portfolio)
