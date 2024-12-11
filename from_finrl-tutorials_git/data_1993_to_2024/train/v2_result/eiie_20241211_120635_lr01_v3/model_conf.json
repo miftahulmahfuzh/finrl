@@ -1,0 +1,13 @@
+{
+   "model_kwargs": {
+      "lr": 0.01,
+      "policy": "EIIE"
+   },
+   "policy_kwargs": {
+      "initial_features": 3,
+      "k_size": 3,
+      "conv_mid_features": 2,
+      "conv_final_features": 20,
+      "time_window": 50
+   }
+}

@@ -1,10 +1,10 @@
-import pandas as pd
 from datetime import datetime
+import pandas as pd
+import json
 import os
 from utils import (
     split_data_based_on_date,
     get_quality_tickers,
-    # clean_ohlcv_data,
     process_ohlcv,
 )
 
@@ -13,7 +13,6 @@ processed = pd.read_csv(fprocessed)
 # tickers = processed["tic"].unique()
 # tickers = tickers[:30]
 processed = get_quality_tickers(processed)
-# processed = clean_ohlcv_data(processed)
 
 # save it once
 # fprocessed_quality = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/121_quality_tic_with_features.csv"
@@ -73,6 +72,9 @@ features=["close", "high", "low"]
 initial_features = len(features)
 initial_amount = 1e9
 comission_fee_pct = 0.0025
+time_column = "date"
+tics_in_portfolio = "all"
+normalize_df = None
 
 detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 environment_train = PortfolioOptimizationEnv(
@@ -81,12 +83,27 @@ environment_train = PortfolioOptimizationEnv(
         comission_fee_pct=comission_fee_pct,
         time_window=TIME_WINDOW,
         features=features,
-        time_column="date",
-        normalize_df=None, # dataframe is already normalized
-        tics_in_portfolio="all",
+        time_column=time_column,
+        normalize_df=normalize_df, # dataframe is already normalized
+        tics_in_portfolio=tics_in_portfolio,
         mode="train",
         detailed_actions_file=detailed_actions_file,
     )
+train_env_conf = {
+    "initial_amount": initial_amount,
+    "comission_fee_pct": comission_fee_pct,
+    "time_window": TIME_WINDOW,
+    "features": features,
+    "time_column": time_column,
+    "normalize_df": normalize_df,
+    "tics_in_portfolio": tics_in_portfolio,
+    "mode": MODE,
+    "detailed_actions_file": detailed_actions_file
+}
+train_env_str = json.dumps(train_env_conf, indent=3)
+print(train_env_str)
+with open(f"{d}/{MODE}_env_conf.json", "w+") as f:
+    f.write(train_env_str)
 
 from finrl.agents.portfolio_optimization.architectures import EIIE
 from finrl.agents.portfolio_optimization.models import DRLAgent
@@ -98,7 +115,11 @@ print(device)
 
 model_kwargs = {
     "lr": 0.01,
-    "policy": EIIE,
+    "policy": EIIE
+}
+model_kwargs_str = {
+    "lr": 0.001,
+    "policy": "EIIE"
 }
 policy_kwargs = {
     "initial_features": initial_features,
@@ -107,6 +128,14 @@ policy_kwargs = {
     "conv_final_features": 20,
     "time_window": TIME_WINDOW
 }
+model_conf = {
+    "model_kwargs": model_kwargs_str,
+    "policy_kwargs": policy_kwargs
+}
+model_conf_str = json.dumps(model_conf, indent=3)
+print(model_conf_str)
+with open(f"{d}/model_conf.json", "w+") as f:
+    f.write(model_conf_str)
 
 model = DRLAgent(environment_train).get_model("pg", device, model_kwargs, policy_kwargs)
 if MODE == "train":
@@ -116,12 +145,6 @@ model_path = f"{d}/policy_EIIE.pt"
 
 if MODE == "train":
     torch.save(model.train_policy.state_dict(), model_path)
-
-EIIE_results = {
-    "train": environment_train._asset_memory["final"],
-    "dev": {},
-    "test": {}
-}
 
 # instantiate an architecture with the same arguments used in training
 # and load with load_state_dict.
@@ -141,14 +164,28 @@ environment_dev = PortfolioOptimizationEnv(
         comission_fee_pct=comission_fee_pct,
         time_window=TIME_WINDOW,
         features=features,
-        time_column="date",
+        time_column=time_column,
         normalize_df=None, # dataframe is already normalized
         tics_in_portfolio="all",
         mode=MODE,
         detailed_actions_file=detailed_actions_file,
     )
+# dev_env_conf = {
+#     "initial_amount": initial_amount,
+#     "comission_fee_pct": comission_fee_pct,
+#     "time_window": TIME_WINDOW,
+#     "features": features,
+#     "time_column": time_column,
+#     "normalize_df": normalize_df,
+#     "tics_in_portfolio": tics_in_portfolio,
+#     "mode": MODE,
+#     "detailed_actions_file": detailed_actions_file
+# }
+# dev_env_str = json.dumps(dev_env_conf, indent=3)
+# # print(dev_env_str)
+# with open(f"{d}/{MODE}_env_conf.json", "w+") as f:
+#     f.write(dev_env_str)
 DRLAgent.DRL_validation(model, environment_dev, policy=policy)
-EIIE_results[MODE] = environment_dev._asset_memory["final"]
 
 # testing
 MODE = "test"
@@ -165,5 +202,19 @@ environment_test = PortfolioOptimizationEnv(
         mode=MODE,
         detailed_actions_file=detailed_actions_file,
     )
+# test_env_conf = {
+#     "initial_amount": initial_amount,
+#     "comission_fee_pct": comission_fee_pct,
+#     "time_window": TIME_WINDOW,
+#     "features": features,
+#     "time_column": time_column,
+#     "normalize_df": normalize_df,
+#     "tics_in_portfolio": tics_in_portfolio,
+#     "mode": MODE,
+#     "detailed_actions_file": detailed_actions_file
+# }
+# test_env_str = json.dumps(test_env_conf, indent=3)
+# # print(test_env_str)
+# with open(f"{d}/{MODE}_env_conf.json", "w+") as f:
+#     f.write(test_env_str)
 DRLAgent.DRL_validation(model, environment_test, policy=policy)
-EIIE_results[MODE] = environment_test._asset_memory["final"]

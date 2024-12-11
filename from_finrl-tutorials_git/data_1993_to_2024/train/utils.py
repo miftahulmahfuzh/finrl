@@ -33,8 +33,8 @@ def split_data_based_on_date(
     dev_df = df[dev_mask].copy()
     test_df = df[test_mask].copy()
 
-    train_days = train_df["day"].unique()[:300]
-    train_df = train_df[train_df["day"].isin(train_days)]
+    # train_days = train_df["day"].unique()[:300]
+    # train_df = train_df[train_df["day"].isin(train_days)]
     # print(train_df)
 
     # Validate the splits
@@ -48,62 +48,7 @@ def split_data_based_on_date(
 
     return train_df, dev_df, test_df
 
-def clean_ohlcv_data(df):
-    """
-    Clean OHLCV DataFrame by:
-    1. Grouping by ticker symbol
-    2. Filling NaN, zero, or 1 values with previous non-1/non-zero value for the same ticker
 
-    Parameters:
-    -----------
-    df : pandas.DataFrame
-        Input DataFrame with OHLCV data
-
-    Returns:
-    --------
-    pandas.DataFrame
-        Cleaned DataFrame with no NaN, zero, or 1 values
-    """
-    # Create a copy of the DataFrame to avoid modifying the original
-    cleaned_df = df.copy()
-
-    def clean_ticker_data(ticker_group):
-        # Columns to check and fill
-        ohlcv_cols = ['open', 'high', 'low', 'close', 'volume']
-        # ohlcv_cols = ["close"]
-
-        # Create a mask for rows with problematic values
-        problematic_mask = ticker_group[ohlcv_cols].apply(
-            lambda col: (col.isna()) | (col == 0) | (col == 1)
-        )
-
-        # Iterate through columns to fill
-        for col in ohlcv_cols:
-            # Find the first non-problematic value for each column
-            ticker_group[col] = ticker_group[col].replace({0: np.nan, 1: np.nan})
-            # ticker_group[col] = ticker_group[col].fillna(method='ffill')
-            ticker_group[col] = ticker_group[col].bfill()
-
-        return ticker_group
-
-    # Group by ticker and apply cleaning
-    cleaned_df = cleaned_df.groupby('tic', group_keys=False).apply(clean_ticker_data)
-
-    nan_close_counts = df.groupby('tic')['close'].apply(lambda x: x.isna().sum())
-
-    # Print NaN close value counts
-    print("Number of NaN 'close' rows for each ticker:")
-    print(nan_close_counts[nan_close_counts > 0])
-
-    # Drop any remaining rows with NaN values
-    # cleaned_df = cleaned_df.dropna(subset=['open', 'high', 'low', 'close', 'volume'])
-
-    return cleaned_df
-
-import pandas as pd
-import numpy as np
-
-# Define the function
 def process_ohlcv(df):
     """
     Process the given OHLCV DataFrame to handle missing, zero, or '1' values.
@@ -177,6 +122,5 @@ if __name__=="__main__":
             TEST_END_DATE)
     train_processed, dev_processed, test_processed = x
 
-    # cleaned_ohlcv = clean_ohlcv_data(test_processed)
     new_df = process_ohlcv(test_processed)
     new_df.head()

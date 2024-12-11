@@ -161,8 +161,8 @@ class PolicyGradient:
 
         # replay buffer and portfolio vector memory
         self.test_buffer = ReplayBuffer(capacity=batch_size)
-        print(f"SELF TEST ENV EPISODE LENGTH {self.test_env.episode_length}")
-        print(f"ENV PORTFOLIO SIZE {env.portfolio_size}")
+        # print(f"SELF TEST ENV EPISODE LENGTH {self.test_env.episode_length}")
+        # print(f"ENV PORTFOLIO SIZE {env.portfolio_size}")
         self.test_pvm = PVM(self.test_env.episode_length, env.portfolio_size)
 
         # dataset and dataloader

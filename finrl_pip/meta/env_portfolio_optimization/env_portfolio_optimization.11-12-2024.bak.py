@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from stable_baselines3.common.vec_env import DummyVecEnv
 from pathlib import Path
 
-# added by miftah on 11-12-2024
+# added by miftah on 10-12-2024
 import os
 from datetime import datetime as dt, timedelta
 
@@ -136,7 +136,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._time_format = time_format
         self._tic_column = tic_column
         self._df = df
-        self._initial_amount = initial_amount
+        self._initial_amount = initial_amount # set to 1 billion
         self._return_last_action = return_last_action
         self._reward_scaling = reward_scaling
         self._comission_fee_pct = comission_fee_pct
@@ -211,117 +211,41 @@ class PortfolioOptimizationEnv(gym.Env):
         self._portfolio_value = self._initial_amount
         self._terminal = False
 
-    def calculate_duration(self, start: dt, end: dt):
-        # Calculate the duration
-        duration = end - start
-
-        # Extract total seconds from duration
-        total_seconds = int(duration.total_seconds())
-        hours, remainder = divmod(abs(total_seconds), 3600)
-        minutes, seconds = divmod(remainder, 60)
-
-        # Create the dataframe with the required format
-        data = {
-            "start": [start.strftime("%Y-%m-%d_%H:%M:%S")],
-            "end": [end.strftime("%Y-%m-%d_%H:%M:%S")],
-            "duration_hour": [hours],
-            "duration_minute": [minutes],
-            "duration_second": [seconds],
-        }
-        return pd.DataFrame(data)
-
     def step(self, actions):
-        """Performs a simulation step.
-
-        Args:
-            actions: An unidimensional array containing the new portfolio
-                weights.
-
-        Note:
-            If the environment was created with "return_last_action" set to
-            True, the next state returned will be a Dict. If it's set to False,
-            the next state will be a Box. You can check the observation state
-            through the attribute "observation_space".
-
-        Returns:
-            If "new_gym_api" is set to True, the following tuple is returned:
-            (state, reward, terminal, truncated, info). If it's set to False,
-            the following tuple is returned: (state, reward, terminal, info).
-
-            state: Next simulation state.
-            reward: Reward related to the last performed action.
-            terminal: If True, the environment is in a terminal state.
-            truncated: If True, the environment has passed it's simulation
-                time limit. Currently, it's always False.
-            info: A dictionary containing informations about the last state.
-        """
         self._terminal = self._time_index >= len(self._sorted_times) - 1
 
         if self._terminal:
-            d = "/".join(self.detailed_actions_file.split("/")[:-1])
-            os.makedirs(d, exist_ok=True)
-            actions_df = pd.DataFrame(self._detailed_actions_memory)
-            print(actions_df)
-            self._end_timestamp = dt.now()
-            duration_df = self.calculate_duration(self._start_timestamp, self._end_timestamp)
-            with pd.ExcelWriter(self.detailed_actions_file) as writer:
-                # filtered_actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
-                actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
-                duration_df.to_excel(writer, sheet_name='duration', index=False)
-            # filtered_actions_df.to_csv(self.detailed_actions_file, index=False)
-            print(f"Detailed actions and duration is saved to:\n{self.detailed_actions_file}")
-            # metrics_df = pd.DataFrame(
-            #     {
-            #         "date": self._date_memory,
-            #         "returns": self._portfolio_return_memory,
-            #         "rewards": self._portfolio_reward_memory,
-            #         "portfolio_values": self._asset_memory["final"],
-            #     }
-            # )
-            # metrics_df.set_index("date", inplace=True)
 
-            # plt.plot(metrics_df["portfolio_values"], "r")
-            # plt.title("Portfolio Value Over Time")
-            # plt.xlabel("Time")
-            # plt.ylabel("Portfolio value")
-            # plt.savefig(self._results_file / "portfolio_value.png")
-            # plt.close()
+            # SAVE SELF._DETAILED_ACTIONS_MEMORY TO CSV - MIFTAH
+            # if not self._is_train:
+            if True:
+                d = "/".join(self.detailed_actions_file.split("/")[:-1])
+                os.makedirs(d, exist_ok=True)
+                actions_df = pd.DataFrame(self._detailed_actions_memory)
+                print(actions_df)
 
-            # plt.plot(self._portfolio_reward_memory, "r")
-            # plt.title("Reward Over Time")
-            # plt.xlabel("Time")
-            # plt.ylabel("Reward")
-            # plt.savefig(self._results_file / "reward.png")
-            # plt.close()
+                # COMMENT THIS BECAUSE WE NEED TO IMPLEMENT
+                # UPDATE ON DETAILED ACTION CALCULATION
+                # Identify tickers that were bought at least once
+                # actions_df[ticker] consists of (open_price, weight, num_shares, close_price)
+                # tickers = [
+                #     col for col in actions_df.columns
+                #     if isinstance(actions_df[col].iloc[0], tuple) and any(actions_df[col].apply(lambda x: x[2] > 0))
+                # ]
+                # # Filter the DataFrame to include only these tickers and metadata columns
+                # filtered_columns = ["date", "day", "funds_on_market_open"] + tickers + ["funds_on_market_close"]
 
-            # plt.plot(self._actions_memory)
-            # plt.title("Actions performed")
-            # plt.xlabel("Time")
-            # plt.ylabel("Weight")
-            # plt.savefig(self._results_file / "actions.png")
-            # plt.close()
+                # filtered_columns = ["date", "portfolio", "CASH"] + self._info["tics"].tolist()
+                # filtered_actions_df = actions_df[filtered_columns]
 
-            # print("=================================")
-            # print("Initial portfolio value:{}".format(self._asset_memory["final"][0]))
-            # print(f"Final portfolio value: {self._portfolio_value}")
-            # print(
-            #     "Final accumulative portfolio value: {}".format(
-            #         self._portfolio_value / self._asset_memory["final"][0]
-            #     )
-            # )
-            # print(
-            #     "Maximum DrawDown: {}".format(
-            #         qs.stats.max_drawdown(metrics_df["portfolio_values"])
-            #     )
-            # )
-            # print("Sharpe ratio: {}".format(qs.stats.sharpe(metrics_df["returns"])))
-            # print("=================================")
-
-            # qs.plots.snapshot(
-            #     metrics_df["returns"],
-            #     show=False,
-            #     savefig=self._results_file / "portfolio_summary.png",
-            # )
+                self._end_timestamp = dt.now()
+                duration_df = self.calculate_duration(self._start_timestamp, self._end_timestamp)
+                with pd.ExcelWriter(self.detailed_actions_file) as writer:
+                    # filtered_actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
+                    actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
+                    duration_df.to_excel(writer, sheet_name='duration', index=False)
+                # filtered_actions_df.to_csv(self.detailed_actions_file, index=False)
+                print(f"Detailed actions and duration is saved to:\n{self.detailed_actions_file}")
 
             if self._new_gym_api:
                 return self._state, self._reward, self._terminal, False, self._info
@@ -333,12 +257,22 @@ class PortfolioOptimizationEnv(gym.Env):
 
             # if necessary, normalize weights
             if math.isclose(np.sum(actions), 1, abs_tol=1e-6) and np.min(actions) >= 0:
+                # print(f"NO NORMALIZATION ON WEIGHTS")
                 weights = actions
+                # print(f"WEIGHT FOR FUNDS: {weights[0]}")
             else:
+                # print(f"USE NORMALIZATION ON WEIGHTS")
                 weights = self._softmax_normalization(actions)
 
             # save initial portfolio weights for this time step
             self._actions_memory.append(weights)
+
+            # Get tickers, prices, and portfolio value
+            # tickers = self._info["tics"]
+            # prices = self._info["data"].loc[
+            #     self._info["data"]["date"] == self._info["end_time"], "close"
+            # ].values
+            # prices = prices.astype(int)
 
             # get last step final weights and portfolio_value
             last_weights = self._final_weights[-1]
@@ -348,22 +282,45 @@ class PortfolioOptimizationEnv(gym.Env):
             self._state, self._info = self._get_state_and_info_from_time_index(
                 self._time_index
             )
+            # print(f"TIME STEP: {self._time_index}")
+            # print(f"INFO: {self._info}")
+
+            # Get tickers, prices, and portfolio value - miftah
+            # if not self._is_train:
+            # if True:
+            #     tickers = self._info["tics"]
+            #     open_prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "open"].values
+            #     open_prices = open_prices.astype(int)
+            #     close_prices = self._info["data"].loc[self._info["data"]["date"] == self._info["end_time"], "close"].values
+            #     close_prices = close_prices.astype(int)
+
+            # Calculate initial portfolio value using open prices
+            # funds_on_market_open = np.sum(num_shares * open_prices)
+
+            portfolio_value = self._portfolio_value  # Assumes this is updated in each step
+            # print(f"\nINIT PORTFOLIO VALUE ON {self._time_index}: {self._portfolio_value}")
+
+            # Log the portfolio value for verification
+            # print(f"CHECK PORTFOLIO VALUE ON {self._time_index}: {check_portfolio_value}")
 
             # if using weights vector modifier, we need to modify weights vector
-            if self._comission_fee_model == "wvm":
-                delta_weights = weights - last_weights
-                delta_assets = delta_weights[1:]  # disconsider
-                # calculate fees considering weights modification
-                fees = np.sum(np.abs(delta_assets * self._portfolio_value))
-                if fees > weights[0] * self._portfolio_value:
-                    weights = last_weights
-                    # maybe add negative reward
-                else:
-                    portfolio = weights * self._portfolio_value
-                    portfolio[0] -= fees
-                    self._portfolio_value = np.sum(portfolio)  # new portfolio value
-                    weights = portfolio / self._portfolio_value  # new weights
-            elif self._comission_fee_model == "trf":
+            # if self._comission_fee_model == "wvm":
+            #     # print(f"USING WVM")
+            #     delta_weights = weights - last_weights
+            #     delta_assets = delta_weights[1:]  # disconsider
+            #     # calculate fees considering weights modification
+            #     fees = np.sum(np.abs(delta_assets * self._portfolio_value))
+            #     if fees > weights[0] * self._portfolio_value:
+            #         weights = last_weights
+            #         # maybe add negative reward
+            #     else:
+            #         portfolio = weights * self._portfolio_value
+            #         portfolio[0] -= fees
+            #         self._portfolio_value = np.sum(portfolio)  # new portfolio value
+            #         weights = portfolio / self._portfolio_value  # new weights
+            # elif self._comission_fee_model == "trf":
+            if self._comission_fee_model == "trf":
+                # print(f"USING TRF")
                 last_mu = 1
                 mu = 1 - 2 * self._comission_fee_pct + self._comission_fee_pct**2
                 while abs(mu - last_mu) > 1e-10:
@@ -376,19 +333,45 @@ class PortfolioOptimizationEnv(gym.Env):
                     ) / (1 - self._comission_fee_pct * weights[0])
                 self._info["trf_mu"] = mu
                 self._portfolio_value = mu * self._portfolio_value
+                # print(f"WEIGHTS 0: {weights[0]}")
+                # print(f"CURRENT MU: {mu}")
 
             # save initial portfolio value of this time step
+            # print(f"\nTIMESTEP {self._time_index} INITIAL PORTFOLIO VALUE: {self._portfolio_value}")
             self._asset_memory["initial"].append(self._portfolio_value)
 
+            # LOG DAILY ACTIONS - MIFTAH
+            # if not self._is_train:
+            # if True:
+            #     daily_log = {
+            #         "date": self._info["end_time"],
+            #         "day": self._time_index,
+            #     }
+            #     funds_on_market_open = int(self._portfolio_value)
+            #     if self._funds_on_prev_day:
+            #         funds_on_market_open = int(self._funds_on_prev_day)
+
+            #     daily_log["funds_on_market_open"] = funds_on_market_open
+
+            #     # CALCULATE SHARES - MIFTAH
+            #     num_shares = np.floor((funds_on_market_open * weights[1:]) / open_prices).astype(int)
+            #     # check_portfolio_value = np.sum(num_shares * open_prices)
+
+            #     # Calculate final portfolio value using close prices
+            #     funds_on_market_close = np.sum(num_shares * close_prices)
+
             # SET NAN WEIGHT TO 0 - MIFTAH
-            # weights[np.isnan(weights)] = 0
-            # if np.sum(weights) > 1:
-            #     weights = self._softmax_normalization(weights)
+            weights[np.isnan(weights)] = 0
+            if np.sum(weights) > 1:
+                weights = self._softmax_normalization(weights)
 
             # time passes and time variation changes the portfolio distribution
             portfolio = self._portfolio_value * (weights * self._price_variation)
+            # print(f"PRICE VARIATION: {self._price_variation}")
+            # print(f"PRICE VARIATION SHAPE: {self._price_variation.shape}")
 
             # CALCULATE WEIGHTS PERCENT - MIFTAH
+            # if not self._is_train:
             date_str = self._info["end_time"].strftime("%Y-%m-%d")
             daily_log = {"date": date_str, "portfolio": self._portfolio_value}
 
@@ -396,12 +379,19 @@ class PortfolioOptimizationEnv(gym.Env):
             weights_percent[weights_percent < 0.01] = 0  # Set small weights to zero
             weight_details = ["CASH"] + self._info["tics"].tolist() # add column for cash allocation
             for i, ticker in enumerate(weight_details):
+                # daily_log[ticker] = (open_prices[i], weights_percent[i], num_shares[i], close_prices[i])
                 daily_log[ticker] = weights_percent[i]
-            self._detailed_actions_memory.append(daily_log)
 
             # calculate new portfolio value and weights
             self._portfolio_value = np.sum(portfolio)
             weights = portfolio / self._portfolio_value
+            # print(f"TIMESTEP {self._time_index} END PORTFOLIO VALUE: {self._portfolio_value}")
+
+            # if not self._is_train:
+            # if True:
+            #     daily_log["funds_on_market_close"] = funds_on_market_close
+            #     self._funds_on_prev_day = funds_on_market_close
+            self._detailed_actions_memory.append(daily_log)
 
             # save final portfolio value and weights of this time step
             self._asset_memory["final"].append(self._portfolio_value)
