@@ -8,11 +8,13 @@ from utils import (
     process_ohlcv,
 )
 
-fprocessed = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/923_tuntun_api_data_with_features.csv"
-processed = pd.read_csv(fprocessed)
+# fprocessed = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/923_tuntun_api_data_with_features.csv"
+# fprocessed_v2 = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features.csv"
+fprocessed_v3 = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features_v3.csv"
+processed = pd.read_csv(fprocessed_v3)
 # tickers = processed["tic"].unique()
 # tickers = tickers[:30]
-processed = get_quality_tickers(processed)
+# processed = get_quality_tickers(processed)
 
 # save it once
 # fprocessed_quality = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/121_quality_tic_with_features.csv"
@@ -26,7 +28,8 @@ print(f"TICKERS IN DATA ({len(tickers)}): {processed['tic'].unique()}")
 # unique_days = processed["day"].unique()
 # print(f"TOTAL UNIQUE DAYS: {len(unique_days)}")
 
-TRAIN_START_DATE = "1993-01-04"
+# TRAIN_START_DATE = "1993-01-04"
+TRAIN_START_DATE = "2010-11-29"
 TRAIN_END_DATE = "2022-12-31"
 DEV_START_DATE = "2023-01-01"
 DEV_END_DATE = "2023-12-31"
@@ -41,17 +44,17 @@ x = split_data_based_on_date(
         TEST_START_DATE,
         TEST_END_DATE)
 train_processed, dev_processed, test_processed = x
-test_processed = process_ohlcv(test_processed)
+# test_processed = process_ohlcv(test_processed)
 
 print("\n====================================")
-days = processed["day"].unique()
-print(f"Total all days in dataset {len(days)}")
-days = train_processed["day"].unique()
-print(f"Total all days in train data {len(days)}")
-days = dev_processed["day"].unique()
-print(f"Total all days in dev data {len(days)}")
-days = test_processed["day"].unique()
-print(f"Total all days in test data {len(days)}")
+days = processed["date"].unique()
+print(f"Total days in dataset {len(days)}")
+days = train_processed["date"].unique()
+print(f"Total days in train data {len(days)}")
+days = dev_processed["date"].unique()
+print(f"Total days in dev data {len(days)}")
+days = test_processed["date"].unique()
+print(f"Total days in test data {len(days)}")
 print("====================================\n")
 
 df_portfolio_train = train_processed
@@ -113,13 +116,19 @@ device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(device)
 
 
+lr = 0.01
+action_noise = 0.8
+episodes = 50
 model_kwargs = {
-    "lr": 0.01,
-    "policy": EIIE
+    "lr": lr,
+    "policy": EIIE,
+    "action_noise": action_noise
 }
 model_kwargs_str = {
-    "lr": 0.001,
-    "policy": "EIIE"
+    "lr": lr,
+    "policy": "EIIE",
+    "action_noise": action_noise,
+    "episodes": episodes
 }
 policy_kwargs = {
     "initial_features": initial_features,
@@ -139,7 +148,7 @@ with open(f"{d}/model_conf.json", "w+") as f:
 
 model = DRLAgent(environment_train).get_model("pg", device, model_kwargs, policy_kwargs)
 if MODE == "train":
-    DRLAgent.train_model(model, episodes=1)
+    DRLAgent.train_model(model, episodes=episodes)
 
 model_path = f"{d}/policy_EIIE.pt"
 

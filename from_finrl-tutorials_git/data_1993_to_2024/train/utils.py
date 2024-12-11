@@ -104,6 +104,35 @@ def process_ohlcv(df):
     df[ohlcv_cols] = df[ohlcv_cols].bfill().ffill()
     return df
 
+def _temporal_variation_df(_df, _features, periods=1):
+    """Calculates the temporal variation dataframe. For each feature, this
+    dataframe contains the rate of the current feature's value and the last
+    feature's value given a period. It's used to normalize the dataframe.
+
+    Args:
+        periods: Periods (in time indexes) to calculate temporal variation.
+
+    Returns:
+        Temporal variation dataframe.
+    """
+    _tic_column = "tic"
+    df_temporal_variation = _df.copy()
+    prev_columns = []
+    for column in _features:
+        prev_column = f"prev_{column}"
+        prev_columns.append(prev_column)
+        df_temporal_variation[prev_column] = df_temporal_variation.groupby("tic")[column].shift(periods=periods)
+        df_temporal_variation[column] = (
+            df_temporal_variation[column] / df_temporal_variation[prev_column]
+        )
+    df_temporal_variation = (
+        df_temporal_variation.drop(columns=prev_columns)
+        .fillna(1)
+        .reset_index(drop=True)
+    )
+    return df_temporal_variation
+
+
 if __name__=="__main__":
     # Example usage:
     TRAIN_START_DATE = "1993-01-04"
