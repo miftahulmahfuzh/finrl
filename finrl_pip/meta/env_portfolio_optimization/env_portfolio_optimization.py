@@ -264,68 +264,19 @@ class PortfolioOptimizationEnv(gym.Env):
             print(actions_df)
             self._end_timestamp = dt.now()
             duration_df = self.calculate_duration(self._start_timestamp, self._end_timestamp)
+            tmp = self.detailed_actions_file
             if self._mode == "train":
                 tmp = self.detailed_actions_file[:-5]
                 tmp = f"{tmp}_{episode}.xlsx"
-                self.detailed_actions_file = tmp
-            with pd.ExcelWriter(self.detailed_actions_file) as writer:
+                # self.detailed_actions_file = tmp
+            # with pd.ExcelWriter(self.detailed_actions_file) as writer:
+            with pd.ExcelWriter(tmp) as writer:
                 # filtered_actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
                 actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
                 duration_df.to_excel(writer, sheet_name='duration', index=False)
             # filtered_actions_df.to_csv(self.detailed_actions_file, index=False)
-            print(f"Detailed actions and duration is saved to:\n{self.detailed_actions_file}")
-            # metrics_df = pd.DataFrame(
-            #     {
-            #         "date": self._date_memory,
-            #         "returns": self._portfolio_return_memory,
-            #         "rewards": self._portfolio_reward_memory,
-            #         "portfolio_values": self._asset_memory["final"],
-            #     }
-            # )
-            # metrics_df.set_index("date", inplace=True)
-
-            # plt.plot(metrics_df["portfolio_values"], "r")
-            # plt.title("Portfolio Value Over Time")
-            # plt.xlabel("Time")
-            # plt.ylabel("Portfolio value")
-            # plt.savefig(self._results_file / "portfolio_value.png")
-            # plt.close()
-
-            # plt.plot(self._portfolio_reward_memory, "r")
-            # plt.title("Reward Over Time")
-            # plt.xlabel("Time")
-            # plt.ylabel("Reward")
-            # plt.savefig(self._results_file / "reward.png")
-            # plt.close()
-
-            # plt.plot(self._actions_memory)
-            # plt.title("Actions performed")
-            # plt.xlabel("Time")
-            # plt.ylabel("Weight")
-            # plt.savefig(self._results_file / "actions.png")
-            # plt.close()
-
-            # print("=================================")
-            # print("Initial portfolio value:{}".format(self._asset_memory["final"][0]))
-            # print(f"Final portfolio value: {self._portfolio_value}")
-            # print(
-            #     "Final accumulative portfolio value: {}".format(
-            #         self._portfolio_value / self._asset_memory["final"][0]
-            #     )
-            # )
-            # print(
-            #     "Maximum DrawDown: {}".format(
-            #         qs.stats.max_drawdown(metrics_df["portfolio_values"])
-            #     )
-            # )
-            # print("Sharpe ratio: {}".format(qs.stats.sharpe(metrics_df["returns"])))
-            # print("=================================")
-
-            # qs.plots.snapshot(
-            #     metrics_df["returns"],
-            #     show=False,
-            #     savefig=self._results_file / "portfolio_summary.png",
-            # )
+            # print(f"Detailed actions and duration is saved to:\n{self.detailed_actions_file}")
+            print(f"Detailed actions and duration is saved to:\n{tmp}")
 
             if self._new_gym_api:
                 return self._state, self._reward, self._terminal, False, self._info
@@ -340,6 +291,14 @@ class PortfolioOptimizationEnv(gym.Env):
                 weights = actions
             else:
                 weights = self._softmax_normalization(actions)
+
+            # POSTPROCESSING WEIGHTS - MIFTAH
+            # 1. Round weights to 2 decimal places
+            weights = np.round(weights, 2)
+            # 2. Set weights < 0.05 to 0
+            weights[weights < 0.05] = 0
+            # Renormalize weights to sum to 1 after zeroing small weights
+            weights = weights / np.sum(weights)
 
             # save initial portfolio weights for this time step
             self._actions_memory.append(weights)

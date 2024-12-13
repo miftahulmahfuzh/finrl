@@ -4,31 +4,14 @@ import json
 import os
 from utils import (
     split_data_based_on_date,
-    get_quality_tickers,
-    process_ohlcv,
 )
 
-# fprocessed = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/923_tuntun_api_data_with_features.csv"
-# fprocessed_v2 = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features.csv"
 fprocessed_v3 = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features_v3.csv"
 processed = pd.read_csv(fprocessed_v3)
-# tickers = processed["tic"].unique()
-# tickers = tickers[:30]
-# processed = get_quality_tickers(processed)
-
-# save it once
-# fprocessed_quality = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/121_quality_tic_with_features.csv"
-# processed.to_csv(fprocessed_quality, index=False)
 
 tickers = sorted(processed["tic"].unique())
-# print(tickers)
-# print(len(tickers))
 print(f"TICKERS IN DATA ({len(tickers)}): {processed['tic'].unique()}")
 
-# unique_days = processed["day"].unique()
-# print(f"TOTAL UNIQUE DAYS: {len(unique_days)}")
-
-# TRAIN_START_DATE = "1993-01-04"
 TRAIN_START_DATE = "2010-11-29"
 TRAIN_END_DATE = "2022-12-31"
 DEV_START_DATE = "2023-01-01"
@@ -44,7 +27,6 @@ x = split_data_based_on_date(
         TEST_START_DATE,
         TEST_END_DATE)
 train_processed, dev_processed, test_processed = x
-# test_processed = process_ohlcv(test_processed)
 
 print("\n====================================")
 days = processed["date"].unique()
@@ -161,6 +143,7 @@ policy = None
 if MODE == "train":
     policy = model.train_policy
 else:
+    print(f"Currently not training, loading the model from:\n{model_path}\n")
     policy = EIIE(**policy_kwargs)
     policy.load_state_dict(torch.load(model_path))
 
@@ -179,21 +162,6 @@ environment_dev = PortfolioOptimizationEnv(
         mode=MODE,
         detailed_actions_file=detailed_actions_file,
     )
-# dev_env_conf = {
-#     "initial_amount": initial_amount,
-#     "comission_fee_pct": comission_fee_pct,
-#     "time_window": TIME_WINDOW,
-#     "features": features,
-#     "time_column": time_column,
-#     "normalize_df": normalize_df,
-#     "tics_in_portfolio": tics_in_portfolio,
-#     "mode": MODE,
-#     "detailed_actions_file": detailed_actions_file
-# }
-# dev_env_str = json.dumps(dev_env_conf, indent=3)
-# # print(dev_env_str)
-# with open(f"{d}/{MODE}_env_conf.json", "w+") as f:
-#     f.write(dev_env_str)
 DRLAgent.DRL_validation(model, environment_dev, policy=policy)
 
 # testing
@@ -211,19 +179,4 @@ environment_test = PortfolioOptimizationEnv(
         mode=MODE,
         detailed_actions_file=detailed_actions_file,
     )
-# test_env_conf = {
-#     "initial_amount": initial_amount,
-#     "comission_fee_pct": comission_fee_pct,
-#     "time_window": TIME_WINDOW,
-#     "features": features,
-#     "time_column": time_column,
-#     "normalize_df": normalize_df,
-#     "tics_in_portfolio": tics_in_portfolio,
-#     "mode": MODE,
-#     "detailed_actions_file": detailed_actions_file
-# }
-# test_env_str = json.dumps(test_env_conf, indent=3)
-# # print(test_env_str)
-# with open(f"{d}/{MODE}_env_conf.json", "w+") as f:
-#     f.write(test_env_str)
 DRLAgent.DRL_validation(model, environment_test, policy=policy)

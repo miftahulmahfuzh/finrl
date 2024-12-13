@@ -235,6 +235,7 @@ class PolicyGradient:
             test: If true, it uses the test dataloader and policy.
         """
         # get batch data from dataloader
+        # print(f"TEST: {test}")
         obs, last_actions, price_variations, trf_mu = (
             next(iter(self.test_dataloader))
             if test

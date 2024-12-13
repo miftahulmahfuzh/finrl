@@ -1,0 +1,15 @@
+{
+   "model_kwargs": {
+      "lr": 0.01,
+      "policy": "EIIE",
+      "action_noise": 0.8,
+      "episodes": 1
+   },
+   "policy_kwargs": {
+      "initial_features": 4,
+      "k_size": 3,
+      "conv_mid_features": 2,
+      "conv_final_features": 20,
+      "time_window": 50
+   }
+}
