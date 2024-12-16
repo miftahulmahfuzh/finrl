@@ -1,0 +1,16 @@
+{
+   "initial_amount": 1000000000.0,
+   "comission_fee_pct": 0.0025,
+   "time_window": 50,
+   "features": [
+      "close",
+      "high",
+      "low",
+      "volume"
+   ],
+   "time_column": "date",
+   "normalize_df": "by_previous_time",
+   "tics_in_portfolio": "all",
+   "mode": "train",
+   "detailed_actions_file": "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241213_104257/result_eiie_train.xlsx"
+}

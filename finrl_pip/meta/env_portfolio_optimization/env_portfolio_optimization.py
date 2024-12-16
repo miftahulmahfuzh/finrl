@@ -94,6 +94,7 @@ class PortfolioOptimizationEnv(gym.Env):
         cwd="./",
         new_gym_api=False,
         # below is added by miftah
+        alpha=0.01,
         mode="train", # options: train, dev, test
         detailed_actions_file=""
     ):
@@ -152,6 +153,8 @@ class PortfolioOptimizationEnv(gym.Env):
         self._start_timestamp = dt.now()
         self._mode = mode
         self.detailed_actions_file = detailed_actions_file
+        self._transaction_cost = 0
+        self._alpha = alpha # how big is the impact of the transaction cost penalty on reward calculation
 
         # results file
         self._results_file = self._cwd / "results" / "rl"
@@ -294,7 +297,9 @@ class PortfolioOptimizationEnv(gym.Env):
 
             # POSTPROCESSING WEIGHTS - MIFTAH
             # 1. Round weights to 2 decimal places
-            weights = np.round(weights, 2)
+            # weights = np.round(weights, 2)
+            # 1. Round weights to multiplies of 0.05
+            weights = np.round(weights * 20) / 20
             # 2. Set weights < 0.05 to 0
             weights[weights < 0.05] = 0
             # Renormalize weights to sum to 1 after zeroing small weights
@@ -339,6 +344,7 @@ class PortfolioOptimizationEnv(gym.Env):
                     ) / (1 - self._comission_fee_pct * weights[0])
                 self._info["trf_mu"] = mu
                 self._portfolio_value = mu * self._portfolio_value
+                self._transaction_cost = 1 - mu
 
             # save initial portfolio value of this time step
             self._asset_memory["initial"].append(self._portfolio_value)
@@ -353,7 +359,11 @@ class PortfolioOptimizationEnv(gym.Env):
 
             # CALCULATE WEIGHTS PERCENT - MIFTAH
             date_str = self._info["end_time"].strftime("%Y-%m-%d")
-            daily_log = {"date": date_str, "portfolio": self._portfolio_value}
+            daily_log = {
+                "date": date_str,
+                "portfolio": self._portfolio_value,
+                "transaction_cost": self._transaction_cost
+            }
 
             weights_percent = weights * 100
             weights_percent[weights_percent < 0.01] = 0  # Set small weights to zero
@@ -378,7 +388,8 @@ class PortfolioOptimizationEnv(gym.Env):
                 self._asset_memory["final"][-1] / self._asset_memory["final"][-2]
             )
             portfolio_return = rate_of_return - 1
-            portfolio_reward = np.log(rate_of_return)
+            # TRANSACTION COST AFFECTS PORTFOLIO REWARD CALCULATION - MIFTAH
+            portfolio_reward = np.log(rate_of_return - (self._alpha * self._transaction_cost))
 
             # save portfolio return memory
             self._portfolio_return_memory.append(portfolio_return)
