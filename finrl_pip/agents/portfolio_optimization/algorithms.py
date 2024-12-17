@@ -63,7 +63,7 @@ class PolicyGradient:
         self.batch_size = batch_size
         self.lr = lr
         self.action_noise = action_noise
-        print(f"SELF.ACTION_NOISE: {action_noise}")
+        # print(f"SELF.ACTION_NOISE: {action_noise}")
         self.optimizer = optimizer
         self.device = device
         self._setup_train(env, self.policy, self.batch_size, self.lr, self.optimizer)

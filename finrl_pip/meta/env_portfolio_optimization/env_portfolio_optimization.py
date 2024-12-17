@@ -96,6 +96,8 @@ class PortfolioOptimizationEnv(gym.Env):
         # below is added by miftah
         alpha=0.01,
         mode="train", # options: train, dev, test
+        use_sortino_ratio=False,
+        risk_free_rate=0,
         detailed_actions_file=""
     ):
         """Initializes environment's instance.
@@ -155,6 +157,10 @@ class PortfolioOptimizationEnv(gym.Env):
         self.detailed_actions_file = detailed_actions_file
         self._transaction_cost = 0
         self._alpha = alpha # how big is the impact of the transaction cost penalty on reward calculation
+        self._prev_weights = None
+        self._first_episode = True
+        self._use_sortino_ratio = use_sortino_ratio
+        self._risk_free_rate = risk_free_rate
 
         # results file
         self._results_file = self._cwd / "results" / "rl"
@@ -355,26 +361,39 @@ class PortfolioOptimizationEnv(gym.Env):
             #     weights = self._softmax_normalization(weights)
 
             # time passes and time variation changes the portfolio distribution
-            portfolio = self._portfolio_value * (weights * self._price_variation)
+            # portfolio = self._portfolio_value * (weights * self._price_variation)
+            # CALCULATE TODAY'S PORTFOLIO USING WEIGHTS ON PREV DAY - MIFTAH
+            if self._first_episode:
+                tmp = [0] * len(self._info["tics"].tolist())
+                self._prev_weights = [1] + tmp
+                self._first_episode = False
+            # print(episode, self._prev_weights)
+            portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
+            self._prev_weights = weights
 
-            # CALCULATE WEIGHTS PERCENT - MIFTAH
             date_str = self._info["end_time"].strftime("%Y-%m-%d")
             daily_log = {
                 "date": date_str,
-                "portfolio": self._portfolio_value,
+                "portfolio": 0,
                 "transaction_cost": self._transaction_cost
             }
+            # print(date_str, self._portfolio_value)
 
+            # CALCULATE WEIGHTS PERCENT - MIFTAH
             weights_percent = weights * 100
             weights_percent[weights_percent < 0.01] = 0  # Set small weights to zero
             weight_details = ["CASH"] + self._info["tics"].tolist() # add column for cash allocation
             for i, ticker in enumerate(weight_details):
                 daily_log[ticker] = weights_percent[i]
-            self._detailed_actions_memory.append(daily_log)
+            for i, ticker in enumerate(weight_details):
+                daily_log[f"{ticker}_v"] = self._price_variation[i]
 
             # calculate new portfolio value and weights
             self._portfolio_value = np.sum(portfolio)
             weights = portfolio / self._portfolio_value
+
+            daily_log["portfolio"] = self._portfolio_value
+            self._detailed_actions_memory.append(daily_log)
 
             # save final portfolio value and weights of this time step
             self._asset_memory["final"].append(self._portfolio_value)
@@ -383,13 +402,46 @@ class PortfolioOptimizationEnv(gym.Env):
             # save date memory
             self._date_memory.append(self._info["end_time"])
 
+            # Calculate Sortino Ratio as the reward - MIFTAH
+            # First, calculate returns
+            returns = np.array(self._portfolio_return_memory)
+
+            # If we don't have enough returns to calculate, use a default reward
+            portfolio_reward = 0
+            if self._use_sortino_ratio:
+                if len(returns) >= 2:
+                    # Calculate mean return
+                    mean_return = np.mean(returns)
+
+                    # Calculate downside deviation (standard deviation of negative returns)
+                    downside_returns = returns[returns < 0]
+
+                    # Handle case with no downside returns
+                    if len(downside_returns) == 0:
+                        downside_dev = 0
+                    else:
+                        downside_dev = np.std(downside_returns)
+
+                    # Sortino Ratio calculation
+                    # Use risk-free rate as 0 for simplicity
+                    # Sortino Ratio = (Mean Portfolio Return - Risk-Free Rate) / Downside Deviation
+                    sortino_ratio = (mean_return - self._risk_free_rate) / (downside_dev if downside_dev > 0 else 1e-10)
+
+                    # Use Sortino Ratio as the reward
+                    portfolio_reward = sortino_ratio
+            #######################################################
+
             # define portfolio return
             rate_of_return = (
                 self._asset_memory["final"][-1] / self._asset_memory["final"][-2]
             )
             portfolio_return = rate_of_return - 1
             # TRANSACTION COST AFFECTS PORTFOLIO REWARD CALCULATION - MIFTAH
-            portfolio_reward = np.log(rate_of_return - (self._alpha * self._transaction_cost))
+            if not self._use_sortino_ratio:
+                portfolio_reward = rate_of_return
+            # print(f"PORTFOLIO REWARD: {portfolio_reward}")
+            if portfolio_reward > 0:
+                portfolio_reward = np.log(portfolio_reward - (self._alpha * self._transaction_cost))
 
             # save portfolio return memory
             self._portfolio_return_memory.append(portfolio_return)
@@ -546,6 +598,11 @@ class PortfolioOptimizationEnv(gym.Env):
             self._df = self._df.sort_values(by=[self._tic_column, self._time_column])
         # defining price variation after ordering dataframe
         self._df_price_variation = self._temporal_variation_df()
+
+        # SAVE PRICE VARIATION - MIFTAH
+        # pv_path = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_price_variation_v3-a_{self._mode}.csv"
+        # self._df_price_variation.to_csv(pv_path, index=False)
+
         # select only stocks in portfolio
         if tics_in_portfolio != "all":
             self._df_price_variation = self._df_price_variation[
