@@ -19,6 +19,7 @@ from pathlib import Path
 # added by miftah on 11-12-2024
 import os
 from datetime import datetime as dt, timedelta
+from scipy.optimize import newton  # Importing the root-finding method
 
 try:
     import quantstats as qs
@@ -84,6 +85,8 @@ class PortfolioOptimizationEnv(gym.Env):
         reward_scaling=1,
         comission_fee_model="trf",
         comission_fee_pct=0,
+        buying_fee_pct=0,
+        selling_fee_pct=0,
         features=["close", "high", "low"],
         valuation_feature="close",
         time_column="date",
@@ -161,6 +164,10 @@ class PortfolioOptimizationEnv(gym.Env):
         self._first_episode = True
         self._use_sortino_ratio = use_sortino_ratio
         self._risk_free_rate = risk_free_rate
+        self._buying_fee_pct = buying_fee_pct
+        self._selling_fee_pct = selling_fee_pct
+        self._buying_cost = 0.0  # Initialize buying cost
+        self._selling_cost = 0.0  # Initialize selling cost
 
         # results file
         self._results_file = self._cwd / "results" / "rl"
@@ -343,6 +350,8 @@ class PortfolioOptimizationEnv(gym.Env):
                     self._portfolio_value = np.sum(portfolio)  # new portfolio value
                     weights = portfolio / self._portfolio_value  # new weights
             elif self._comission_fee_model == "trf":
+                ltmp = last_weights * self._price_variation
+                w_i = (ltmp) / np.sum(ltmp)
                 last_mu = 1
                 mu = 1 - 2 * self._comission_fee_pct + self._comission_fee_pct**2
                 while abs(mu - last_mu) > 1e-10:
@@ -356,6 +365,69 @@ class PortfolioOptimizationEnv(gym.Env):
                 self._info["trf_mu"] = mu
                 self._portfolio_value = mu * self._portfolio_value
                 self._transaction_cost = 1 - mu
+            elif self._comission_fee_model == "trf_v2":
+                # **TRF_V2 SECTION START - MIFTAH**
+
+                buying_fee_pct = self._buying_fee_pct  # Separate buying fee percentage
+                selling_fee_pct = self._selling_fee_pct  # Separate selling fee percentage
+                last_mu = 1.0
+                # Initialize mu considering both buying and selling fees
+                mu = 1.0 - buying_fee_pct - selling_fee_pct
+
+                # Iteratively solve for mu to account for transaction costs
+                max_iterations = 1000
+                iteration = 0
+                tolerance = 1e-10
+
+                # Calculate w_i based on price variation
+                ltmp = last_weights * self._price_variation
+                w_i = np.zeros_like(ltmp)
+                if np.sum(ltmp) > 0:
+                    w_i = ltmp / np.sum(ltmp)
+
+                # Define the equation to solve: f(mu) = 0
+                def equation(mu):
+                    # Calculate selling reductions and costs
+                    selling_reduction = np.maximum(w_i[1:] - mu * weights[1:], 0)
+                    selling_cost = selling_fee_pct * np.sum(selling_reduction)
+                    # Calculate buying increases and costs
+                    buying_increase = np.maximum(mu * weights[1:] - w_i[1:], 0)
+                    buying_cost = buying_fee_pct * np.sum(buying_increase)
+                    # Define the equation based on mu
+                    return mu - (1 - buying_fee_pct * weights[0] - selling_cost - buying_cost) / (1 - buying_fee_pct * weights[0])
+
+                try:
+                    # Initial guess for mu
+                    initial_mu = 1.0 - buying_fee_pct - selling_fee_pct
+                    # Solve for mu using Newton-Raphson method
+                    # Explanation: https://docs.google.com/document/d/11JchD-LxiSccEjjkwzoE7RDqxKQmO0_uMrWAhM2qTG4/edit?usp=sharing
+                    mu = newton(equation, initial_mu, tol=1e-10, maxiter=1000)
+                except RuntimeError:
+                    # Handle the case when the solver did not converge
+                    # Fallback to initial_mu or raise an error
+                    mu = 1.0 - buying_fee_pct - selling_fee_pct
+                    print("Warning. Episode {episode}: mu calculation did not converge. Using initial guess.\n")
+                    # Alternatively, uncomment the next line to raise an error
+                    # raise ValueError("mu calculation did not converge")
+
+                # After finding mu, calculate selling and buying costs
+                selling_reduction = np.maximum(w_i[1:] - mu * weights[1:], 0)
+                selling_cost = selling_fee_pct * np.sum(selling_reduction)
+                buying_increase = np.maximum(mu * weights[1:] - w_i[1:], 0)
+                buying_cost = buying_fee_pct * np.sum(buying_increase)
+
+                # Assign separate transaction costs
+                self._selling_cost = selling_cost
+                self._buying_cost = buying_cost
+
+                # Calculate total transaction cost
+                self._transaction_cost = self._selling_cost + self._buying_cost
+
+                # Update portfolio value
+                self._info["trf_mu"] = mu
+                self._portfolio_value = mu * self._portfolio_value
+
+                # **TRF_V2 SECTION END**
 
             # save initial portfolio value of this time step
             self._asset_memory["initial"].append(self._portfolio_value)
@@ -380,7 +452,9 @@ class PortfolioOptimizationEnv(gym.Env):
             daily_log = {
                 "date": date_str,
                 "portfolio": 0,
-                "transaction_cost": self._transaction_cost
+                "buying_cost": self._buying_cost,
+                "selling_cost": self._selling_cost,
+                "transaction_cost": self._transaction_cost,
             }
             # print(date_str, self._portfolio_value)
 
