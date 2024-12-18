@@ -85,11 +85,14 @@ features=["close", "high", "low", "volume"]
 # features=["close_n", "high_n", "low_n", "volume_n"]
 initial_features = len(features)
 initial_amount = 1e9
-comission_fee_pct = 0.0025
+comission_fee_model = "trf_v2"
+# comission_fee_pct = 0.0025
+buying_fee_pct = 0.0025
+selling_fee_pct = 0.0025
 time_column = "date"
 tics_in_portfolio = "all"
 normalize_df = "by_previous_time"
-alpha = 1
+alpha = 0.3
 use_sortino_ratio = True
 risk_free_rate = 0.05
 
@@ -97,7 +100,10 @@ detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 environment_train = PortfolioOptimizationEnv(
         df_portfolio_train,
         initial_amount=initial_amount,
-        comission_fee_pct=comission_fee_pct,
+        comission_fee_model=comission_fee_model,
+        # comission_fee_pct=comission_fee_pct,
+        buying_fee_pct=buying_fee_pct,
+        selling_fee_pct=selling_fee_pct,
         time_window=TIME_WINDOW,
         features=features,
         time_column=time_column,
@@ -111,7 +117,10 @@ environment_train = PortfolioOptimizationEnv(
     )
 train_env_conf = {
     "initial_amount": initial_amount,
-    "comission_fee_pct": comission_fee_pct,
+    "comission_fee_model": comission_fee_model,
+    # "comission_fee_pct": comission_fee_pct,
+    "buying_fee_pct": buying_fee_pct,
+    "selling_fee_pct": selling_fee_pct,
     "time_window": TIME_WINDOW,
     "features": features,
     "time_column": time_column,
@@ -193,7 +202,10 @@ detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 environment_dev = PortfolioOptimizationEnv(
         df_portfolio_dev,
         initial_amount=initial_amount,
-        comission_fee_pct=comission_fee_pct,
+        comission_fee_model=comission_fee_model,
+        # comission_fee_pct=comission_fee_pct,
+        buying_fee_pct=buying_fee_pct,
+        selling_fee_pct=selling_fee_pct,
         time_window=TIME_WINDOW,
         features=features,
         time_column=time_column,
@@ -213,7 +225,10 @@ detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 environment_test = PortfolioOptimizationEnv(
         df_portfolio_test,
         initial_amount=initial_amount,
-        comission_fee_pct=comission_fee_pct,
+        comission_fee_model=comission_fee_model,
+        # comission_fee_pct=comission_fee_pct,
+        buying_fee_pct=buying_fee_pct,
+        selling_fee_pct=selling_fee_pct,
         time_window=TIME_WINDOW,
         features=features,
         time_column="date",
