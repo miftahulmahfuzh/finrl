@@ -329,6 +329,11 @@ class PortfolioOptimizationEnv(gym.Env):
                 delta_assets = delta_weights[1:]  # disconsider
                 # calculate fees considering weights modification
                 fees = np.sum(np.abs(delta_assets * self._portfolio_value))
+
+                # Store transaction cost for tracking
+                self._transaction_cost = fees
+                # self._info["transaction_cost"] = fees
+
                 if fees > weights[0] * self._portfolio_value:
                     weights = last_weights
                     # maybe add negative reward
