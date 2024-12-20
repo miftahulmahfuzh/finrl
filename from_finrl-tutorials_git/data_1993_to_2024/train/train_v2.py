@@ -1,3 +1,4 @@
+            # TODO: check if any value in actions is na0
 # preprocessed_v3a is v3 that BAYU 2017-12-04 is updated manually in check_data.py
 # preprocessed_v4 is produced by sliding_windows_normalization
 import os
@@ -80,9 +81,20 @@ os.makedirs(d, exist_ok=True)
 
 MODE = "train"
 TIME_WINDOW = 50
-features=["close", "high", "low", "volume"]
-# features=["close_normalized", "high_normalized", "low_normalized", "volume_normalized"]
-# features=["close_n", "high_n", "low_n", "volume_n"]
+features=[
+    "close",
+    "high",
+    "low",
+    "volume",
+    "macd",
+    "boll_ub",
+    "boll_lb",
+    "rsi_30",
+    # "cci_30",
+    # "dx_30",
+    "close_30_sma"
+    # "close_60_sma"
+]
 initial_features = len(features)
 initial_amount = 1e9
 comission_fee_model = "trf_v2"
@@ -92,7 +104,7 @@ selling_fee_pct = 0.0025
 time_column = "date"
 tics_in_portfolio = "all"
 normalize_df = "by_previous_time"
-alpha = 0.3
+alpha = 1
 use_sortino_ratio = True
 risk_free_rate = 0.05
 
@@ -147,7 +159,7 @@ print(device)
 
 lr = 0.01
 action_noise = 0.1
-episodes = 10
+episodes = 3
 model_kwargs = {
     "lr": lr,
     "policy": EIIE,

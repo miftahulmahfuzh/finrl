@@ -72,6 +72,7 @@ def process_ohlcv(df):
             for col in ohlcv_cols:
                 if row[col] in [0, 1] or pd.isna(row[col]):
                     non_one_values = row[ohlcv_cols][(row[ohlcv_cols] != 1) & (row[ohlcv_cols] != 0)].dropna()
+                    # non_one_values = row[ohlcv_cols][(row[ohlcv_cols] > 2) & (row[ohlcv_cols] != 0)].dropna()
                     if not non_one_values.empty:
                         df.at[index, col] = non_one_values.mean()  # Use the mean as a replacement
 

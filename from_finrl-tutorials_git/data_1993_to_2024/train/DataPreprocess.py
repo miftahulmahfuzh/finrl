@@ -1,6 +1,8 @@
 import pandas as pd
 
-df = pd.read_excel('75_tuntun_api_data_with_features_v3-a.xlsx')
+fprocessed_v3a = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features_v3-a.csv"
+df = pd.read_csv(fprocessed_v3a)
+# df = pd.read_excel('75_tuntun_api_data_with_features_v3-a.xlsx')
 
 df_new = df[['date','tic','close','high','low','volume']].copy()
 print(len(df_new))
@@ -8,7 +10,7 @@ print(len(df_new))
 stocks = df_new['tic'].unique()
 print(len(stocks))
 
-window = 30
+window = 50
 
 df_new['close_n'] = -1
 df_new['high_n'] = -1
@@ -30,4 +32,6 @@ def normalize_window(group):
 
 df_new = df_new.groupby('tic', group_keys=False).apply(normalize_window)
 
-df_new.to_csv('output.csv')
+# df_new.to_csv('output.csv')
+fprocessed_yukun = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features_yukun.csv"
+df_new.to_csv(fprocessed_yukun, index=False)
