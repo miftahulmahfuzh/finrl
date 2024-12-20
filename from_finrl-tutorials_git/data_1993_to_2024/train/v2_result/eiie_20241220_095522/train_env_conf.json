@@ -1,0 +1,26 @@
+{
+   "initial_amount": 1000000000.0,
+   "comission_fee_model": "trf_v2",
+   "buying_fee_pct": 0.0025,
+   "selling_fee_pct": 0.0025,
+   "time_window": 50,
+   "features": [
+      "close",
+      "high",
+      "low",
+      "volume",
+      "macd",
+      "boll_ub",
+      "boll_lb",
+      "rsi_30",
+      "close_30_sma"
+   ],
+   "time_column": "date",
+   "normalize_df": "by_previous_time",
+   "tics_in_portfolio": "all",
+   "alpha": 1,
+   "mode": "train",
+   "use_sortino_ratio": true,
+   "risk_free_rate": 0.05,
+   "detailed_actions_file": "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241220_095522/result_eiie_train.xlsx"
+}

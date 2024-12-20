@@ -84,10 +84,8 @@ class PortfolioOptimizationEnv(gym.Env):
         normalize_df="by_previous_time",
         reward_scaling=1,
         comission_fee_model="trf",
-        comission_fee_pct=0,
-        buying_fee_pct=0,
-        selling_fee_pct=0,
         features=["close", "high", "low"],
+        comission_fee_pct=0,
         valuation_feature="close",
         time_column="date",
         time_format="%Y-%m-%d",
@@ -97,6 +95,8 @@ class PortfolioOptimizationEnv(gym.Env):
         cwd="./",
         new_gym_api=False,
         # below is added by miftah
+        buying_fee_pct=0,
+        selling_fee_pct=0,
         alpha=0.01,
         mode="train", # options: train, dev, test
         use_sortino_ratio=False,
@@ -300,7 +300,10 @@ class PortfolioOptimizationEnv(gym.Env):
 
         else:
             # transform action to numpy array (if it's a list)
+            # print(f"ACTIONS FROM EIIE MODEL: {actions}")
             actions = np.array(actions, dtype=np.float32)
+            if np.isnan(actions).any():
+                raise ValueError(f"FOUND NAN IN MODEL ACTIONS EPISODE {episode}: {actions}")
 
             # if necessary, normalize weights
             if math.isclose(np.sum(actions), 1, abs_tol=1e-6) and np.min(actions) >= 0:
@@ -309,14 +312,21 @@ class PortfolioOptimizationEnv(gym.Env):
                 weights = self._softmax_normalization(actions)
 
             # POSTPROCESSING WEIGHTS - MIFTAH
-            # 1. Round weights to 2 decimal places
-            # weights = np.round(weights, 2)
             # 1. Round weights to multiplies of 0.05
             weights = np.round(weights * 20) / 20
             # 2. Set weights < 0.05 to 0
             weights[weights < 0.05] = 0
             # Renormalize weights to sum to 1 after zeroing small weights
             weights = weights / np.sum(weights)
+
+            # CALCULATE TODAY'S PORTFOLIO USING WEIGHTS ON PREV DAY - MIFTAH
+            # MOVED FROM LINE 448 BELOW
+            if self._first_episode:
+                tmp = [0] * len(self._info["tics"].tolist())
+                self._prev_weights = [1] + tmp
+                self._first_episode = False
+            # print(episode, self._prev_weights)
+            portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
 
             # save initial portfolio weights for this time step
             self._actions_memory.append(weights)
@@ -350,8 +360,6 @@ class PortfolioOptimizationEnv(gym.Env):
                     self._portfolio_value = np.sum(portfolio)  # new portfolio value
                     weights = portfolio / self._portfolio_value  # new weights
             elif self._comission_fee_model == "trf":
-                ltmp = last_weights * self._price_variation
-                w_i = (ltmp) / np.sum(ltmp)
                 last_mu = 1
                 mu = 1 - 2 * self._comission_fee_pct + self._comission_fee_pct**2
                 while abs(mu - last_mu) > 1e-10:
@@ -386,29 +394,29 @@ class PortfolioOptimizationEnv(gym.Env):
                     w_i = ltmp / np.sum(ltmp)
 
                 # Define the equation to solve: f(mu) = 0
-                def equation(mu):
-                    # Calculate selling reductions and costs
-                    selling_reduction = np.maximum(w_i[1:] - mu * weights[1:], 0)
-                    selling_cost = selling_fee_pct * np.sum(selling_reduction)
-                    # Calculate buying increases and costs
-                    buying_increase = np.maximum(mu * weights[1:] - w_i[1:], 0)
-                    buying_cost = buying_fee_pct * np.sum(buying_increase)
-                    # Define the equation based on mu
-                    return mu - (1 - buying_fee_pct * weights[0] - selling_cost - buying_cost) / (1 - buying_fee_pct * weights[0])
+                # def equation(mu):
+                #     # Calculate selling reductions and costs
+                #     selling_reduction = np.maximum(w_i[1:] - mu * weights[1:], 0)
+                #     selling_cost = selling_fee_pct * np.sum(selling_reduction)
+                #     # Calculate buying increases and costs
+                #     buying_increase = np.maximum(mu * weights[1:] - w_i[1:], 0)
+                #     buying_cost = buying_fee_pct * np.sum(buying_increase)
+                #     # Define the equation based on mu
+                #     return mu - (1 - buying_fee_pct * weights[0] - selling_cost - buying_cost) / (1 - buying_fee_pct * weights[0])
 
-                try:
-                    # Initial guess for mu
-                    initial_mu = 1.0 - buying_fee_pct - selling_fee_pct
-                    # Solve for mu using Newton-Raphson method
-                    # Explanation: https://docs.google.com/document/d/11JchD-LxiSccEjjkwzoE7RDqxKQmO0_uMrWAhM2qTG4/edit?usp=sharing
-                    mu = newton(equation, initial_mu, tol=1e-10, maxiter=1000)
-                except RuntimeError:
-                    # Handle the case when the solver did not converge
-                    # Fallback to initial_mu or raise an error
-                    mu = 1.0 - buying_fee_pct - selling_fee_pct
-                    print("Warning. Episode {episode}: mu calculation did not converge. Using initial guess.\n")
-                    # Alternatively, uncomment the next line to raise an error
-                    # raise ValueError("mu calculation did not converge")
+                # try:
+                #     # Initial guess for mu
+                #     initial_mu = 1.0 - buying_fee_pct - selling_fee_pct
+                #     # Solve for mu using Newton-Raphson method
+                #     # Explanation: https://docs.google.com/document/d/11JchD-LxiSccEjjkwzoE7RDqxKQmO0_uMrWAhM2qTG4/edit?usp=sharing
+                #     mu = newton(equation, initial_mu, tol=1e-10, maxiter=1000)
+                # except RuntimeError:
+                #     # Handle the case when the solver did not converge
+                #     # Fallback to initial_mu or raise an error
+                #     mu = 1.0 - buying_fee_pct - selling_fee_pct
+                #     print("Warning. Episode {episode}: mu calculation did not converge. Using initial guess.\n")
+                #     # Alternatively, uncomment the next line to raise an error
+                #     # raise ValueError("mu calculation did not converge")
 
                 # After finding mu, calculate selling and buying costs
                 selling_reduction = np.maximum(w_i[1:] - mu * weights[1:], 0)
@@ -440,12 +448,12 @@ class PortfolioOptimizationEnv(gym.Env):
             # time passes and time variation changes the portfolio distribution
             # portfolio = self._portfolio_value * (weights * self._price_variation)
             # CALCULATE TODAY'S PORTFOLIO USING WEIGHTS ON PREV DAY - MIFTAH
-            if self._first_episode:
-                tmp = [0] * len(self._info["tics"].tolist())
-                self._prev_weights = [1] + tmp
-                self._first_episode = False
-            # print(episode, self._prev_weights)
-            portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
+            # if self._first_episode:
+            #     tmp = [0] * len(self._info["tics"].tolist())
+            #     self._prev_weights = [1] + tmp
+            #     self._first_episode = False
+            # # print(episode, self._prev_weights)
+            # portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
             self._prev_weights = weights
 
             date_str = self._info["end_time"].strftime("%Y-%m-%d")
@@ -679,7 +687,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._df_price_variation = self._temporal_variation_df()
 
         # SAVE PRICE VARIATION - MIFTAH
-        # pv_path = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_price_variation_v3-a_{self._mode}.csv"
+        # pv_path = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_price_variation_v3-a_{self._mode}_12_features.csv"
         # self._df_price_variation.to_csv(pv_path, index=False)
 
         # select only stocks in portfolio
@@ -768,6 +776,9 @@ class PortfolioOptimizationEnv(gym.Env):
                 print(f"Normalizing {self._features} by {normalizer_column}")
                 for column in self._features:
                     self._df[column] = self._df[column] / self._df[normalizer_column]
+            # SAVE NORMALIZATION - MIFTAH
+            # pv_path = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_v3-a_{self._mode}_12_features_n_{normalize}.xlsx"
+            # self._df.to_excel(pv_path, sheet_name=self._mode, index=False)
         elif callable(normalize):
             print("Applying custom normalization function...")
             self._df = normalize(self._df)
