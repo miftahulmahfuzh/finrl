@@ -14,6 +14,10 @@ from .utils import PVM
 from .utils import ReplayBuffer
 from .utils import RLDataset
 
+# below lines are added by miftah
+import os
+import json
+
 
 class PolicyGradient:
     """Class implementing policy gradient algorithm to train portfolio
@@ -42,6 +46,11 @@ class PolicyGradient:
         action_noise=0,
         optimizer=AdamW,
         device="cpu",
+        # below lines are added by miftah
+        checkpoint_dir="",
+        policy_str="",
+        dev_env=None,
+        test_env=None
     ):
         """Initializes Policy Gradient for portfolio optimization.
 
@@ -67,6 +76,17 @@ class PolicyGradient:
         self.optimizer = optimizer
         self.device = device
         self._setup_train(env, self.policy, self.batch_size, self.lr, self.optimizer)
+
+        # below lines are added by miftah
+        self._checkpoint_dir = checkpoint_dir
+        print(f"SELF._CHECKPOINT_DIR: {checkpoint_dir}")
+        # main_dir = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train"
+        # d = f"{main_dir}/v2_result/EIIE"
+        # self._checkpoint_dir = f"{d}/checkpoint"
+
+        self._policy_str = policy_str
+        self._dev_env = dev_env
+        self._test_env = test_env
 
     def _setup_train(self, env, policy, batch_size, lr, optimizer):
         """Initializes algorithm before training.
@@ -102,7 +122,9 @@ class PolicyGradient:
         Args:
             episodes: Number of episodes to simulate.
         """
-        for i in tqdm(range(1, episodes + 1)):
+        print(f"EPISODES: {episodes}")
+        for episode in tqdm(range(1, episodes + 1)):
+            print(f"\nEPISODE: {episode}")
             obs = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
             done = False
@@ -118,7 +140,6 @@ class PolicyGradient:
                 self.train_pvm.add(action)
 
                 # run simulation step
-                episode = i
                 next_obs, reward, done, info = self.train_env.step(action, episode)
 
                 # add experience to replay buffer
@@ -131,12 +152,46 @@ class PolicyGradient:
 
                 obs = next_obs
 
+            # SAVE MODEL AT THE END OF EPISODE - MIFTAH
+            self._save_model(episode)
+
+            # EVALUATE AT THE END OF EPISODE - MIFTAH
+            policy = self.train_policy
+            online_training_period = 10
+            learning_rate = self.lr
+            optimizer = self.optimizer
+            self._dev_env._eval_episode = episode
+            self._test_env._eval_episode = episode
+            self.test(self._dev_env, policy, online_training_period, learning_rate, optimizer)
+            self.test(self._test_env, policy, online_training_period, learning_rate, optimizer)
+            asset_episode = {
+                "train": int(self.train_env._asset_memory["final"][-1]),
+                "dev": int(self._dev_env._asset_memory["final"][-1]),
+                "test": int(self._test_env._asset_memory["final"][-1])
+            }
+            d = f"{self._checkpoint_dir}-{episode}"
+            os.makedirs(d, exist_ok=True)
+            outf = f"{d}/asset_episode.json"
+            x = json.dumps(asset_episode, indent=3)
+            print(f"ASSET PATH: {outf}")
+            with open(outf, "w+") as f:
+                f.write(x)
+
+            # self._asset_memory["final"].append(self._portfolio_value)
+
             # gradient ascent with episode remaining buffer data
             self._gradient_ascent()
 
             # validation step
             if self.validation_env:
                 self.test(self.validation_env)
+
+    def _save_model(self, episode):
+        d = f"{self._checkpoint_dir}-{episode}"
+        os.makedirs(d, exist_ok=True)
+        outf = f"{d}/policy_{self._policy_str}_{episode}.pt"
+        torch.save(self.train_policy.state_dict(), outf)
+        print(f"{self._policy_str} Model Episode {episode} is saved to:\n{outf}")
 
     def _setup_test(self, env, policy, batch_size, lr, optimizer):
         """Initializes algorithm before testing.

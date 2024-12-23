@@ -5,4 +5,5 @@ csv/
 *.xlsx
 *.csv
 *.pyc
+*.json
 __pycache__/

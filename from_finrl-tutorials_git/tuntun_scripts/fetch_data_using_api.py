@@ -5,10 +5,11 @@ from datetime import datetime, timedelta
 from utils import get_all_tickers, get_tic_data_in_range
 
 # Constants
-START_DATE = "2010-01-01"
-END_DATE = "2024-11-26"
+# START_DATE = "2010-01-01"
 # END_DATE = "2024-11-26"
-CSV_DIR = "csv"
+START_DATE = "2024-03-13"
+END_DATE = "2024-11-26"
+CSV_DIR = "csv_23122024"
 
 def get_day_name(date):
     """Returns the day name of the given date."""
@@ -35,11 +36,15 @@ def fetch_data_batch():
     #     processed_days = set()
     #     existing_data = pd.DataFrame()
 
-    all_tickers = get_all_tickers()
-    # skip_tickers = ["BOAT", "DAAZ"]
-    skip_tickers = open("skip_tickers.txt").read().splitlines()
-    all_tickers = [t for t in all_tickers if t not in skip_tickers]
+    # all_tickers = get_all_tickers()
+    # # skip_tickers = ["BOAT", "DAAZ"]
+    skip_tickers = []
+    # skip_tickers = open("skip_tickers.txt").read().splitlines()
+    # all_tickers = [t for t in all_tickers if t not in skip_tickers]
     # all_tickers = ["BBCA"]
+    tic75 = open("75_tickers.txt").read().splitlines()
+    all_tickers = tic75
+    print(f"TOTAL TICKERS: {len(all_tickers)}")
 
     total_days = (datetime.strptime(END_DATE, "%Y-%m-%d") - datetime.strptime(START_DATE, "%Y-%m-%d")).days + 1
 
@@ -72,9 +77,9 @@ def fetch_data_batch():
         try:
             list_data = get_tic_data_in_range(tic, START_DATE, END_DATE)
         except:
-            continue
+            # continue
             # print(f"Failed to get {tic} on date {current_date}. day: {day_name}")
-            # skip_tickers.append(tic)
+            skip_tickers.append(tic)
             # return None
         # if not list_data:
         #     continue
@@ -105,8 +110,9 @@ def fetch_data_batch():
 
         # Convert rows to DataFrame and append to CSV
         # if rows:
-    # with open("skip_labels.txt", "w+") as f:
-    #     f.write("\n".join(skip_tickers))
+    print(f"TOTAL TICKERS: {len(all_tickers)}")
+    with open("skip_labels_23122024.txt", "w+") as f:
+        f.write("\n".join(skip_tickers))
 
 if __name__ == "__main__":
     fetch_data_batch()

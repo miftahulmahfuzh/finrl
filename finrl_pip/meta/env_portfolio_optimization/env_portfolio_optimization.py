@@ -101,7 +101,8 @@ class PortfolioOptimizationEnv(gym.Env):
         mode="train", # options: train, dev, test
         use_sortino_ratio=False,
         risk_free_rate=0,
-        detailed_actions_file=""
+        detailed_actions_file="",
+        eval_episode=None # this parameter is used as info what training episode is the evaluation (dev, test) currently on
     ):
         """Initializes environment's instance.
 
@@ -168,6 +169,8 @@ class PortfolioOptimizationEnv(gym.Env):
         self._selling_fee_pct = selling_fee_pct
         self._buying_cost = 0.0  # Initialize buying cost
         self._selling_cost = 0.0  # Initialize selling cost
+        self._eval_episode = eval_episode
+        self._interim_portfolio_value = 0
 
         # results file
         self._results_file = self._cwd / "results" / "rl"
@@ -274,25 +277,33 @@ class PortfolioOptimizationEnv(gym.Env):
         self._terminal = self._time_index >= len(self._sorted_times) - 1
 
         if self._terminal:
-            d = "/".join(self.detailed_actions_file.split("/")[:-1])
-            os.makedirs(d, exist_ok=True)
-            actions_df = pd.DataFrame(self._detailed_actions_memory)
-            print(actions_df)
-            self._end_timestamp = dt.now()
-            duration_df = self.calculate_duration(self._start_timestamp, self._end_timestamp)
-            tmp = self.detailed_actions_file
-            if self._mode == "train":
-                tmp = self.detailed_actions_file[:-5]
-                tmp = f"{tmp}_{episode}.xlsx"
-                # self.detailed_actions_file = tmp
-            # with pd.ExcelWriter(self.detailed_actions_file) as writer:
-            with pd.ExcelWriter(tmp) as writer:
-                # filtered_actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
-                actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
-                duration_df.to_excel(writer, sheet_name='duration', index=False)
-            # filtered_actions_df.to_csv(self.detailed_actions_file, index=False)
-            # print(f"Detailed actions and duration is saved to:\n{self.detailed_actions_file}")
-            print(f"Detailed actions and duration is saved to:\n{tmp}")
+            # d = "/".join(self.detailed_actions_file.split("/")[:-1])
+
+            if self._mode in ["dev", "test"]:
+                episode = self._eval_episode
+            if not episode:
+                episode = 0
+            if int(episode) % 25 == 0:
+                d = f"{self.detailed_actions_file}-{episode}"
+                os.makedirs(d, exist_ok=True)
+                actions_df = pd.DataFrame(self._detailed_actions_memory)
+                print(actions_df)
+                self._end_timestamp = dt.now()
+                duration_df = self.calculate_duration(self._start_timestamp, self._end_timestamp)
+                tmp = self.detailed_actions_file
+                # if self._mode == "train":
+                    # tmp = self.detailed_actions_file[:-5]
+                    # tmp = f"{tmp}_{episode}.xlsx"
+                tmp = f"{d}/result_eiie_{self._mode}.xlsx"
+                if self._mode == "train":
+                    tmp = f"{d}/result_eiie_{self._mode}_{episode}.xlsx"
+                with pd.ExcelWriter(tmp) as writer:
+                    # filtered_actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
+                    actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
+                    duration_df.to_excel(writer, sheet_name='duration', index=False)
+                # filtered_actions_df.to_csv(self.detailed_actions_file, index=False)
+                # print(f"Detailed actions and duration is saved to:\n{self.detailed_actions_file}")
+                print(f"Detailed actions and duration is saved to:\n{tmp}")
 
             if self._new_gym_api:
                 return self._state, self._reward, self._terminal, False, self._info
@@ -300,24 +311,40 @@ class PortfolioOptimizationEnv(gym.Env):
 
         else:
             # transform action to numpy array (if it's a list)
-            # print(f"ACTIONS FROM EIIE MODEL: {actions}")
             actions = np.array(actions, dtype=np.float32)
-            if np.isnan(actions).any():
-                raise ValueError(f"FOUND NAN IN MODEL ACTIONS EPISODE {episode}: {actions}")
+            date_str = self._info["end_time"].strftime("%Y-%m-%d")
+            # print(f"ACTIONS FROM EIIE MODEL ON {date_str}: {actions}")
+            # print(f"SUM OF THE ACTIONS: {np.sum(actions)}")
+            # if np.isnan(actions).any():
+            #     raise ValueError(f"FOUND NAN IN MODEL ACTIONS EPISODE {episode}: {actions}")
+            # if date_str == "2023-04-06":
+            #     raise ValueError(f"STOP")
 
             # if necessary, normalize weights
             if math.isclose(np.sum(actions), 1, abs_tol=1e-6) and np.min(actions) >= 0:
                 weights = actions
             else:
                 weights = self._softmax_normalization(actions)
+            # print(f"ACTIONS AFTER PROCESSING 1 FROM EIIE MODEL ON {date_str}: {weights}")
+            # print(f"SUM OF THE ACTIONS FROM PROCESSING 1: {np.sum(actions)}")
 
             # POSTPROCESSING WEIGHTS - MIFTAH
             # 1. Round weights to multiplies of 0.05
             weights = np.round(weights * 20) / 20
+            # if after this command the sum is zero 0, then we reset the value back
+            # print(f"ACTIONS AFTER PROCESSING 2- MULTIPLIES OF 0.05. FROM EIIE MODEL ON {date_str}: {weights}")
             # 2. Set weights < 0.05 to 0
             weights[weights < 0.05] = 0
+            # print(f"ACTIONS AFTER PROCESSING 2- SET BELOW 0.05 TO ZERO. FROM EIIE MODEL ON {date_str}: {weights}")
             # Renormalize weights to sum to 1 after zeroing small weights
-            weights = weights / np.sum(weights)
+            # V1
+            # weights = weights / np.sum(weights)
+            # print(f"ACTIONS AFTER PROCESSING 2- DIVIDE BY SUM OF WEIGHTS. FROM EIIE MODEL ON {date_str}: {weights}")
+            # V2
+            if np.sum(weights) == 0:
+                weights[0] = 1.0
+            else:
+                weights = weights / np.sum(weights)
 
             # CALCULATE TODAY'S PORTFOLIO USING WEIGHTS ON PREV DAY - MIFTAH
             # MOVED FROM LINE 448 BELOW
@@ -327,6 +354,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 self._first_episode = False
             # print(episode, self._prev_weights)
             portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
+            self._interim_portfolio_value = np.sum(portfolio)
 
             # save initial portfolio weights for this time step
             self._actions_memory.append(weights)
@@ -381,6 +409,8 @@ class PortfolioOptimizationEnv(gym.Env):
                 last_mu = 1.0
                 # Initialize mu considering both buying and selling fees
                 mu = 1.0 - buying_fee_pct - selling_fee_pct
+                # mu = 1 - 0.0025 - 0.0025
+                # minimum mu = 0.005
 
                 # Iteratively solve for mu to account for transaction costs
                 max_iterations = 1000
@@ -388,7 +418,8 @@ class PortfolioOptimizationEnv(gym.Env):
                 tolerance = 1e-10
 
                 # Calculate w_i based on price variation
-                ltmp = last_weights * self._price_variation
+                # ltmp = last_weights * self._price_variation
+                ltmp = self._prev_weights * self._price_variation
                 w_i = np.zeros_like(ltmp)
                 if np.sum(ltmp) > 0:
                     w_i = ltmp / np.sum(ltmp)
@@ -418,11 +449,25 @@ class PortfolioOptimizationEnv(gym.Env):
                 #     # Alternatively, uncomment the next line to raise an error
                 #     # raise ValueError("mu calculation did not converge")
 
-                # After finding mu, calculate selling and buying costs
-                selling_reduction = np.maximum(w_i[1:] - mu * weights[1:], 0)
+                # After finding mu, calculate selling and buying costs - V1
+                # selling_reduction = np.maximum(w_i[1:] - mu * weights[1:], 0)
+                # selling_cost = selling_fee_pct * np.sum(selling_reduction)
+                # buying_increase = np.maximum(mu * weights[1:] - w_i[1:], 0)
+                # buying_cost = buying_fee_pct * np.sum(buying_increase)
+
+                # After finding mu, calculate selling and buying costs (MU REMOVED) - V2
+                date_str = self._info["end_time"].strftime("%Y-%m-%d")
+                selling_reduction = np.maximum(w_i[1:] - weights[1:], 0)
                 selling_cost = selling_fee_pct * np.sum(selling_reduction)
-                buying_increase = np.maximum(mu * weights[1:] - w_i[1:], 0)
+                buying_increase = np.maximum(weights[1:] - w_i[1:], 0)
                 buying_cost = buying_fee_pct * np.sum(buying_increase)
+                # print(f"DATE: {date_str}")
+                # print(f"SELLING REDUCTION: {selling_reduction}")
+                # print(f"BUYING INCREASE: {buying_increase}")
+                # print(f"W_I: {w_i[1:]}")
+                # print(f"WEIGHTS: {weights[1:]}\n")
+                # if date_str == "2023-09-25":
+                #     raise ValueError(f"STOP")
 
                 # Assign separate transaction costs
                 self._selling_cost = selling_cost
@@ -433,7 +478,10 @@ class PortfolioOptimizationEnv(gym.Env):
 
                 # Update portfolio value
                 self._info["trf_mu"] = mu
-                self._portfolio_value = mu * self._portfolio_value
+                # self._portfolio_value = mu * self._portfolio_value
+                # self._portfolio_value = self._portfolio_value - self._transaction_cost
+                self._portfolio_value = self._portfolio_value * (1 - self._transaction_cost)
+                # self._portfolio_value = self._portfolio_value_prev * (1 - self._transaction_cost)
 
                 # **TRF_V2 SECTION END**
 
@@ -460,6 +508,7 @@ class PortfolioOptimizationEnv(gym.Env):
             daily_log = {
                 "date": date_str,
                 "portfolio": 0,
+                "interim_portfolio": self._interim_portfolio_value,
                 "buying_cost": self._buying_cost,
                 "selling_cost": self._selling_cost,
                 "transaction_cost": self._transaction_cost,
@@ -769,7 +818,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 )
                 self._df = self._temporal_variation_df(self._time_window - 1)
             elif normalize == "by_previous_time":
-                print(f"Normalizing {self._features} by previous time...")
+                print(f"Normalizing {self._features} for data {self._mode} by previous time...")
                 self._df = self._temporal_variation_df()
             elif normalize.startswith("by_"):
                 normalizer_column = normalize[3:]
@@ -779,6 +828,7 @@ class PortfolioOptimizationEnv(gym.Env):
             # SAVE NORMALIZATION - MIFTAH
             # pv_path = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_v3-a_{self._mode}_12_features_n_{normalize}.xlsx"
             # self._df.to_excel(pv_path, sheet_name=self._mode, index=False)
+            # print(f"NORMALIZATION DATA IS SAVED TO:\n{pv_path}")
         elif callable(normalize):
             print("Applying custom normalization function...")
             self._df = normalize(self._df)

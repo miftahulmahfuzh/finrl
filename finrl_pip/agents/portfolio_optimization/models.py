@@ -22,13 +22,15 @@ class DRLAgent:
         env: Gym environment class.
     """
 
-    def __init__(self, env):
+    def __init__(self, env, dev_env, test_env):
         """Agent initialization.
 
         Args:
             env: Gym environment to be used in training.
         """
         self.env = env
+        self._dev_env = dev_env
+        self._test_env = test_env
 
     def get_model(
         self, model_name, device="cpu", model_kwargs=None, policy_kwargs=None
@@ -63,6 +65,10 @@ class DRLAgent:
 
         # add policy_kwargs inside model_kwargs
         model_kwargs["policy_kwargs"] = policy_kwargs
+
+        # add dev_env and test_env - miftah
+        model_kwargs["dev_env"] = self._dev_env
+        model_kwargs["test_env"] = self._test_env
 
         return model(self.env, **model_kwargs)
 
