@@ -102,7 +102,8 @@ class PortfolioOptimizationEnv(gym.Env):
         use_sortino_ratio=False,
         risk_free_rate=0,
         detailed_actions_file="",
-        eval_episode=None # this parameter is used as info what training episode is the evaluation (dev, test) currently on
+        eval_episode=None, # what training episode is the evaluation (dev, test) currently on
+        save_detailed_step=25 # write detailed action xlsx for each save_detailed_step
     ):
         """Initializes environment's instance.
 
@@ -170,6 +171,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._selling_cost = 0.0  # Initialize selling cost
         self._eval_episode = eval_episode
         self._interim_portfolio_value = 0
+        self._save_detailed_step = save_detailed_step
 
         # results file
         self._results_file = self._cwd / "results" / "rl"
@@ -281,7 +283,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 episode = self._eval_episode
             elif not episode:
                 episode = 0
-            if int(episode) % 2 == 0:
+            if int(episode) % self._save_detailed_step == 0:
                 print(f"TERMINAL. WRITE DETAILED RESULT {self._mode} FOR EPISODE: {episode}")
                 d = f"{self.detailed_actions_file}-{episode}"
                 os.makedirs(d, exist_ok=True)
@@ -355,6 +357,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 self._first_episode = False
             # print(episode, self._prev_weights)
             portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
+            self._portfolio_value = np.sum(portfolio)
             self._interim_portfolio_value = np.sum(portfolio)
 
             # save initial portfolio weights for this time step
@@ -481,7 +484,9 @@ class PortfolioOptimizationEnv(gym.Env):
                 self._info["trf_mu"] = mu
                 # self._portfolio_value = mu * self._portfolio_value
                 # self._portfolio_value = self._portfolio_value - self._transaction_cost
+                # print(f"SELF._PORTFOLIO_VALUE BEFORE: {self._portfolio_value}")
                 self._portfolio_value = self._portfolio_value * (1 - self._transaction_cost)
+                # print(f"SELF._PORTFOLIO_VALUE AFTER: {self._portfolio_value}")
                 # self._portfolio_value = self._portfolio_value_prev * (1 - self._transaction_cost)
 
                 # **TRF_V2 SECTION END**
@@ -508,7 +513,7 @@ class PortfolioOptimizationEnv(gym.Env):
             date_str = self._info["end_time"].strftime("%Y-%m-%d")
             daily_log = {
                 "date": date_str,
-                "portfolio": 0,
+                "portfolio": self._portfolio_value,
                 "interim_portfolio": self._interim_portfolio_value,
                 "buying_cost": self._buying_cost,
                 "selling_cost": self._selling_cost,
@@ -526,7 +531,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 daily_log[f"{ticker}_v"] = self._price_variation[i]
 
             # calculate new portfolio value and weights
-            self._portfolio_value = np.sum(portfolio)
+            # self._portfolio_value = np.sum(portfolio) # MOVED TO LINE 358
             weights = portfolio / self._portfolio_value
 
             daily_log["portfolio"] = self._portfolio_value

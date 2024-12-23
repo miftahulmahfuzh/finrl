@@ -111,6 +111,7 @@ normalize_df = "by_previous_time"
 alpha = 1
 use_sortino_ratio = True
 risk_free_rate = 0.05
+save_detailed_step = 25
 
 # detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 detailed_actions_file = checkpoint_dir
@@ -131,6 +132,7 @@ environment_train = PortfolioOptimizationEnv(
         use_sortino_ratio=use_sortino_ratio,
         risk_free_rate=risk_free_rate,
         detailed_actions_file=detailed_actions_file,
+        save_detailed_step=save_detailed_step,
     )
 environment_dev = PortfolioOptimizationEnv(
         df_portfolio_dev,
@@ -149,6 +151,7 @@ environment_dev = PortfolioOptimizationEnv(
         use_sortino_ratio=use_sortino_ratio,
         risk_free_rate=risk_free_rate,
         detailed_actions_file=detailed_actions_file,
+        save_detailed_step=save_detailed_step,
     )
 environment_test = PortfolioOptimizationEnv(
         df_portfolio_test,
@@ -167,6 +170,7 @@ environment_test = PortfolioOptimizationEnv(
         use_sortino_ratio=use_sortino_ratio,
         risk_free_rate=risk_free_rate,
         detailed_actions_file=detailed_actions_file,
+        save_detailed_step=save_detailed_step,
     )
 train_env_conf = {
     "initial_amount": initial_amount,
@@ -183,6 +187,7 @@ train_env_conf = {
     "mode": MODE,
     "use_sortino_ratio": use_sortino_ratio,
     "risk_free_rate": risk_free_rate,
+    "save_detailed_step": save_detailed_step,
     "detailed_actions_file": detailed_actions_file
 }
 train_env_str = json.dumps(train_env_conf, indent=3)
@@ -200,7 +205,7 @@ print(device)
 
 lr = 0.01
 action_noise = 0.1
-episodes = 10
+episodes = 500
 policy_str = "EIIE"
 model_kwargs = {
     "lr": lr,
