@@ -155,7 +155,6 @@ class PortfolioOptimizationEnv(gym.Env):
 
         # added by miftah to record detailed actions for each day
         self._detailed_actions_memory = []
-        self._funds_on_prev_day = 0
         self._start_timestamp = dt.now()
         self._mode = mode
         self.detailed_actions_file = detailed_actions_file
@@ -278,12 +277,12 @@ class PortfolioOptimizationEnv(gym.Env):
 
         if self._terminal:
             # d = "/".join(self.detailed_actions_file.split("/")[:-1])
-
             if self._mode in ["dev", "test"]:
                 episode = self._eval_episode
-            if not episode:
+            elif not episode:
                 episode = 0
-            if int(episode) % 25 == 0:
+            if int(episode) % 2 == 0:
+                print(f"TERMINAL. WRITE DETAILED RESULT {self._mode} FOR EPISODE: {episode}")
                 d = f"{self.detailed_actions_file}-{episode}"
                 os.makedirs(d, exist_ok=True)
                 actions_df = pd.DataFrame(self._detailed_actions_memory)
@@ -304,6 +303,8 @@ class PortfolioOptimizationEnv(gym.Env):
                 # filtered_actions_df.to_csv(self.detailed_actions_file, index=False)
                 # print(f"Detailed actions and duration is saved to:\n{self.detailed_actions_file}")
                 print(f"Detailed actions and duration is saved to:\n{tmp}")
+            else:
+                print(f"TERMINAL. SKIP WRITING DETAILED RESULT FOR MODE: {self._mode}, EPISODE: {episode}")
 
             if self._new_gym_api:
                 return self._state, self._reward, self._terminal, False, self._info
@@ -779,6 +780,12 @@ class PortfolioOptimizationEnv(gym.Env):
         ]
         # memorize datetimes
         self._date_memory = [date_time]
+
+        # added by miftah
+        self._detailed_actions_memory = []
+        self._first_episode = True
+        self._prev_weights = None
+        self._portfolio_value = self._initial_amount
 
     def _standardize_state(self, state):
         """Standardize the state given the observation space. If "return_last_action"

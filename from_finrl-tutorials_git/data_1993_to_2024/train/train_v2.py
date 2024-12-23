@@ -14,8 +14,11 @@ from normalization_utils import (
     sliding_windows_normalization,
 )
 
-fprocessed_v3a = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features_v3-a.csv"
-processed = pd.read_csv(fprocessed_v3a)
+# in v3-a, ELSA on 2024-11-20 has wrong ohlcv value
+# fprocessed_v3a = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features_v3-a.csv"
+# we fixed that on v4-a
+fprocessed_v4a = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_with_features_v4-a.csv"
+processed = pd.read_csv(fprocessed_v4a)
 # processed = sliding_windows_normalization(processed)
 
 # columns = ["date", "tic", "high", "high_normalized", "low", "low_normalized", "close", "close_normalized", "volume", "volume_normalized"]
@@ -64,9 +67,9 @@ df_portfolio_train = train_processed
 df_portfolio_dev = dev_processed
 df_portfolio_test = test_processed
 
+# df_test = df_portfolio_test[test_columns]
 # test_path = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features_v3-a_test.csv"
 # test_columns=["date", "tic", "close", "high", "low", "volume"]
-# df_test = df_portfolio_test[test_columns]
 # df_test.to_csv(test_path, index=False)
 # print(f"DF TEST IS SAVED TO: {test_path}")
 # exit()
@@ -77,6 +80,7 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 model_name = f"eiie_{timestamp}"
 main_dir = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train"
 d = f"{main_dir}/v2_result/{model_name}"
+checkpoint_dir = f"{d}/checkpoint"
 os.makedirs(d, exist_ok=True)
 
 MODE = "train"
@@ -90,10 +94,10 @@ features=[
     "boll_ub",
     "boll_lb",
     "rsi_30",
-    # "cci_30",
-    # "dx_30",
+    # "cci_30", # RESULTED IN NAN
+    # "dx_30", # RESULTED IN NAN
     "close_30_sma"
-    # "close_60_sma"
+    # "close_60_sma" # RESULTED IN NAN
 ]
 initial_features = len(features)
 initial_amount = 1e9
@@ -108,7 +112,8 @@ alpha = 1
 use_sortino_ratio = True
 risk_free_rate = 0.05
 
-detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
+# detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
+detailed_actions_file = checkpoint_dir
 environment_train = PortfolioOptimizationEnv(
         df_portfolio_train,
         initial_amount=initial_amount,
@@ -123,6 +128,42 @@ environment_train = PortfolioOptimizationEnv(
         tics_in_portfolio=tics_in_portfolio,
         alpha=alpha,
         mode="train",
+        use_sortino_ratio=use_sortino_ratio,
+        risk_free_rate=risk_free_rate,
+        detailed_actions_file=detailed_actions_file,
+    )
+environment_dev = PortfolioOptimizationEnv(
+        df_portfolio_dev,
+        initial_amount=initial_amount,
+        comission_fee_model=comission_fee_model,
+        # comission_fee_pct=comission_fee_pct,
+        buying_fee_pct=buying_fee_pct,
+        selling_fee_pct=selling_fee_pct,
+        time_window=TIME_WINDOW,
+        features=features,
+        time_column=time_column,
+        normalize_df=normalize_df,
+        tics_in_portfolio="all",
+        alpha=alpha,
+        mode="dev",
+        use_sortino_ratio=use_sortino_ratio,
+        risk_free_rate=risk_free_rate,
+        detailed_actions_file=detailed_actions_file,
+    )
+environment_test = PortfolioOptimizationEnv(
+        df_portfolio_test,
+        initial_amount=initial_amount,
+        comission_fee_model=comission_fee_model,
+        # comission_fee_pct=comission_fee_pct,
+        buying_fee_pct=buying_fee_pct,
+        selling_fee_pct=selling_fee_pct,
+        time_window=TIME_WINDOW,
+        features=features,
+        time_column="date",
+        normalize_df=normalize_df,
+        tics_in_portfolio="all",
+        alpha=alpha,
+        mode="test",
         use_sortino_ratio=use_sortino_ratio,
         risk_free_rate=risk_free_rate,
         detailed_actions_file=detailed_actions_file,
@@ -159,15 +200,18 @@ print(device)
 
 lr = 0.01
 action_noise = 0.1
-episodes = 3
+episodes = 10
+policy_str = "EIIE"
 model_kwargs = {
     "lr": lr,
     "policy": EIIE,
-    "action_noise": action_noise
+    "action_noise": action_noise,
+    "checkpoint_dir": checkpoint_dir,
+    "policy_str": policy_str
 }
 model_kwargs_str = {
     "lr": lr,
-    "policy": "EIIE",
+    "policy": policy_str,
     "action_noise": action_noise,
     "episodes": episodes
 }
@@ -187,69 +231,72 @@ print(model_conf_str)
 with open(f"{d}/model_conf.json", "w+") as f:
     f.write(model_conf_str)
 
-model = DRLAgent(environment_train).get_model("pg", device, model_kwargs, policy_kwargs)
+model = DRLAgent(environment_train, dev_env=environment_dev, test_env=environment_test).get_model("pg", device, model_kwargs, policy_kwargs)
 if MODE == "train":
     DRLAgent.train_model(model, episodes=episodes)
 
 # d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/backup/eiie_20241214_080627_alpha_0.1"
 # d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/backup/eiie_20241214_082250_alpha_0.2"
-model_path = f"{d}/policy_EIIE.pt"
+# d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241220_095522_profitable_in_train_nan_in_dev_and_test"
+# model_path = f"{d}/policy_EIIE.pt"
 
-if MODE == "train":
-    torch.save(model.train_policy.state_dict(), model_path)
+# if MODE == "train":
+#     torch.save(model.train_policy.state_dict(), model_path)
 
 # instantiate an architecture with the same arguments used in training
 # and load with load_state_dict.
-policy = None
-if MODE == "train":
-    policy = model.train_policy
-else:
-    print(f"Currently not training, loading the model from:\n{model_path}\n")
-    policy = EIIE(**policy_kwargs)
-    policy.load_state_dict(torch.load(model_path))
+# policy = None
+# if MODE == "train":
+#     policy = model.train_policy
+# else:
+#     print(f"Currently not training, loading the model from:\n{model_path}\n")
+#     policy = EIIE(**policy_kwargs)
+#     policy.load_state_dict(torch.load(model_path))
 
 # dev
-MODE = "dev"
-detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
-environment_dev = PortfolioOptimizationEnv(
-        df_portfolio_dev,
-        initial_amount=initial_amount,
-        comission_fee_model=comission_fee_model,
-        # comission_fee_pct=comission_fee_pct,
-        buying_fee_pct=buying_fee_pct,
-        selling_fee_pct=selling_fee_pct,
-        time_window=TIME_WINDOW,
-        features=features,
-        time_column=time_column,
-        normalize_df=normalize_df,
-        tics_in_portfolio="all",
-        alpha=alpha,
-        mode=MODE,
-        use_sortino_ratio=use_sortino_ratio,
-        risk_free_rate=risk_free_rate,
-        detailed_actions_file=detailed_actions_file,
-    )
-DRLAgent.DRL_validation(model, environment_dev, policy=policy)
+# MODE = "dev"
+# detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
+# # detailed_actions_file = checkpoint_dir
+# environment_dev = PortfolioOptimizationEnv(
+#         df_portfolio_dev,
+#         initial_amount=initial_amount,
+#         comission_fee_model=comission_fee_model,
+#         # comission_fee_pct=comission_fee_pct,
+#         buying_fee_pct=buying_fee_pct,
+#         selling_fee_pct=selling_fee_pct,
+#         time_window=TIME_WINDOW,
+#         features=features,
+#         time_column=time_column,
+#         normalize_df=normalize_df,
+#         tics_in_portfolio="all",
+#         alpha=alpha,
+#         mode="dev",
+#         use_sortino_ratio=use_sortino_ratio,
+#         risk_free_rate=risk_free_rate,
+#         detailed_actions_file=detailed_actions_file,
+#     )
+# DRLAgent.DRL_validation(model, environment_dev, policy=policy)
 
-# testing
-MODE = "test"
-detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
-environment_test = PortfolioOptimizationEnv(
-        df_portfolio_test,
-        initial_amount=initial_amount,
-        comission_fee_model=comission_fee_model,
-        # comission_fee_pct=comission_fee_pct,
-        buying_fee_pct=buying_fee_pct,
-        selling_fee_pct=selling_fee_pct,
-        time_window=TIME_WINDOW,
-        features=features,
-        time_column="date",
-        normalize_df=normalize_df,
-        tics_in_portfolio="all",
-        alpha=alpha,
-        mode=MODE,
-        use_sortino_ratio=use_sortino_ratio,
-        risk_free_rate=risk_free_rate,
-        detailed_actions_file=detailed_actions_file,
-    )
-DRLAgent.DRL_validation(model, environment_test, policy=policy)
+# # testing
+# MODE = "test"
+# detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
+# # detailed_actions_file = checkpoint_dir
+# environment_test = PortfolioOptimizationEnv(
+#         df_portfolio_test,
+#         initial_amount=initial_amount,
+#         comission_fee_model=comission_fee_model,
+#         # comission_fee_pct=comission_fee_pct,
+#         buying_fee_pct=buying_fee_pct,
+#         selling_fee_pct=selling_fee_pct,
+#         time_window=TIME_WINDOW,
+#         features=features,
+#         time_column="date",
+#         normalize_df=normalize_df,
+#         tics_in_portfolio="all",
+#         alpha=alpha,
+#         mode=MODE,
+#         use_sortino_ratio=use_sortino_ratio,
+#         risk_free_rate=risk_free_rate,
+#         detailed_actions_file=detailed_actions_file,
+#     )
+# DRLAgent.DRL_validation(model, environment_test, policy=policy)

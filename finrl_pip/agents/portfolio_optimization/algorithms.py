@@ -122,7 +122,7 @@ class PolicyGradient:
         Args:
             episodes: Number of episodes to simulate.
         """
-        print(f"EPISODES: {episodes}")
+        print(f"IN algorithms.py, PolicyGradient.train(). TOTAL EPISODES: {episodes}")
         for episode in tqdm(range(1, episodes + 1)):
             print(f"\nEPISODE: {episode}")
             obs = self.train_env.reset()  # observation
@@ -160,10 +160,15 @@ class PolicyGradient:
             online_training_period = 10
             learning_rate = self.lr
             optimizer = self.optimizer
+
+            self._dev_env._reset_memory()
             self._dev_env._eval_episode = episode
-            self._test_env._eval_episode = episode
             self.test(self._dev_env, policy, online_training_period, learning_rate, optimizer)
+
+            self._test_env._reset_memory()
+            self._test_env._eval_episode = episode
             self.test(self._test_env, policy, online_training_period, learning_rate, optimizer)
+
             asset_episode = {
                 "train": int(self.train_env._asset_memory["final"][-1]),
                 "dev": int(self._dev_env._asset_memory["final"][-1]),
@@ -181,6 +186,7 @@ class PolicyGradient:
 
             # gradient ascent with episode remaining buffer data
             self._gradient_ascent()
+            self.train_env._reset_memory()
 
             # validation step
             if self.validation_env:
