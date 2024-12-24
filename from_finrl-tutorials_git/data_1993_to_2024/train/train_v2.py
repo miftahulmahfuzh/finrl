@@ -17,8 +17,14 @@ from normalization_utils import (
 # in v3-a, ELSA on 2024-11-20 has wrong ohlcv value
 # fprocessed_v3a = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features_v3-a.csv"
 # we fixed that on v4-a
-fprocessed_v4a = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_with_features_v4-a.csv"
-processed = pd.read_csv(fprocessed_v4a)
+# fprocessed_v4a = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_with_features_v4-a.csv"
+# in v4-a, there is a non market days ["2013-05-25", "2013-05-26", "2024-03-23"]
+# we fixed that in v4-b
+# fprocessed_v4b = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_with_features_v4-b.csv"
+# We got StopIteration Error (https://docs.google.com/document/d/1hiKPXlE9SPAW4vm4C-p5n9XQnr3zFj6Nydhj_XSd72g/edit?usp=sharing) in v4-b
+# so, we try to rerun FeatureEngineer on v4b. that is v5
+fprocessed_v5 = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_with_features_v5.csv"
+processed = pd.read_csv(fprocessed_v5)
 # processed = sliding_windows_normalization(processed)
 
 # columns = ["date", "tic", "high", "high_normalized", "low", "low_normalized", "close", "close_normalized", "volume", "volume_normalized"]
@@ -76,14 +82,16 @@ df_portfolio_test = test_processed
 
 from finrl.meta.env_portfolio_optimization.env_portfolio_optimization import PortfolioOptimizationEnv
 
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-model_name = f"eiie_{timestamp}"
-main_dir = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train"
-d = f"{main_dir}/v2_result/{model_name}"
-checkpoint_dir = f"{d}/checkpoint"
-os.makedirs(d, exist_ok=True)
-
 MODE = "train"
+checkpoint_dir = ""
+if MODE == "train":
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_name = f"eiie_{timestamp}"
+    main_dir = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train"
+    d = f"{main_dir}/v2_result/{model_name}"
+    checkpoint_dir = f"{d}/checkpoint"
+    os.makedirs(d, exist_ok=True)
+
 TIME_WINDOW = 50
 features=[
     "close",
@@ -111,7 +119,7 @@ normalize_df = "by_previous_time"
 alpha = 1
 use_sortino_ratio = True
 risk_free_rate = 0.05
-save_detailed_step = 25
+save_detailed_step = 2
 
 # detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 detailed_actions_file = checkpoint_dir
@@ -190,10 +198,11 @@ train_env_conf = {
     "save_detailed_step": save_detailed_step,
     "detailed_actions_file": detailed_actions_file
 }
-train_env_str = json.dumps(train_env_conf, indent=3)
-print(train_env_str)
-with open(f"{d}/{MODE}_env_conf.json", "w+") as f:
-    f.write(train_env_str)
+if MODE == "train":
+    train_env_str = json.dumps(train_env_conf, indent=3)
+    print(train_env_str)
+    with open(f"{d}/{MODE}_env_conf.json", "w+") as f:
+        f.write(train_env_str)
 
 from finrl.agents.portfolio_optimization.architectures import EIIE
 from finrl.agents.portfolio_optimization.models import DRLAgent
@@ -205,7 +214,7 @@ print(device)
 
 lr = 0.01
 action_noise = 0.1
-episodes = 500
+episodes = 10
 policy_str = "EIIE"
 model_kwargs = {
     "lr": lr,
@@ -231,10 +240,11 @@ model_conf = {
     "model_kwargs": model_kwargs_str,
     "policy_kwargs": policy_kwargs
 }
-model_conf_str = json.dumps(model_conf, indent=3)
-print(model_conf_str)
-with open(f"{d}/model_conf.json", "w+") as f:
-    f.write(model_conf_str)
+if MODE == "train":
+    model_conf_str = json.dumps(model_conf, indent=3)
+    print(model_conf_str)
+    with open(f"{d}/model_conf.json", "w+") as f:
+        f.write(model_conf_str)
 
 model = DRLAgent(environment_train, dev_env=environment_dev, test_env=environment_test).get_model("pg", device, model_kwargs, policy_kwargs)
 if MODE == "train":
@@ -243,20 +253,22 @@ if MODE == "train":
 # d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/backup/eiie_20241214_080627_alpha_0.1"
 # d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/backup/eiie_20241214_082250_alpha_0.2"
 # d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241220_095522_profitable_in_train_nan_in_dev_and_test"
-# model_path = f"{d}/policy_EIIE.pt"
+# d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241223_174514_graph_ep10/checkpoint-10"
+# d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241223_174553_graph_ep100/checkpoint-100"
+# model_path = f"{d}/policy_EIIE_100.pt"
 
 # if MODE == "train":
 #     torch.save(model.train_policy.state_dict(), model_path)
 
 # instantiate an architecture with the same arguments used in training
 # and load with load_state_dict.
-# policy = None
-# if MODE == "train":
-#     policy = model.train_policy
-# else:
-#     print(f"Currently not training, loading the model from:\n{model_path}\n")
-#     policy = EIIE(**policy_kwargs)
-#     policy.load_state_dict(torch.load(model_path))
+policy = None
+if MODE == "train":
+    policy = model.train_policy
+else:
+    print(f"Currently not training, loading the model from:\n{model_path}\n")
+    policy = EIIE(**policy_kwargs)
+    policy.load_state_dict(torch.load(model_path))
 
 # dev
 # MODE = "dev"
@@ -282,7 +294,7 @@ if MODE == "train":
 #     )
 # DRLAgent.DRL_validation(model, environment_dev, policy=policy)
 
-# # testing
+# testing
 # MODE = "test"
 # detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 # # detailed_actions_file = checkpoint_dir
