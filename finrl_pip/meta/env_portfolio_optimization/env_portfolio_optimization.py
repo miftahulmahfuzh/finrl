@@ -102,7 +102,7 @@ class PortfolioOptimizationEnv(gym.Env):
         use_sortino_ratio=False,
         risk_free_rate=0,
         detailed_actions_file="",
-        eval_episode=None, # what training episode is the evaluation (dev, test) currently on
+        eval_episode=0, # what training episode is the evaluation (dev, test) currently on
         save_detailed_step=25 # write detailed action xlsx for each save_detailed_step
     ):
         """Initializes environment's instance.
@@ -278,7 +278,6 @@ class PortfolioOptimizationEnv(gym.Env):
         self._terminal = self._time_index >= len(self._sorted_times) - 1
 
         if self._terminal:
-            # d = "/".join(self.detailed_actions_file.split("/")[:-1])
             if self._mode in ["dev", "test"]:
                 episode = self._eval_episode
             elif not episode:
@@ -292,18 +291,12 @@ class PortfolioOptimizationEnv(gym.Env):
                 self._end_timestamp = dt.now()
                 duration_df = self.calculate_duration(self._start_timestamp, self._end_timestamp)
                 tmp = self.detailed_actions_file
-                # if self._mode == "train":
-                    # tmp = self.detailed_actions_file[:-5]
-                    # tmp = f"{tmp}_{episode}.xlsx"
                 tmp = f"{d}/result_eiie_{self._mode}.xlsx"
                 if self._mode == "train":
                     tmp = f"{d}/result_eiie_{self._mode}_{episode}.xlsx"
                 with pd.ExcelWriter(tmp) as writer:
-                    # filtered_actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
                     actions_df.to_excel(writer, sheet_name='detailed_actions', index=False)
                     duration_df.to_excel(writer, sheet_name='duration', index=False)
-                # filtered_actions_df.to_csv(self.detailed_actions_file, index=False)
-                # print(f"Detailed actions and duration is saved to:\n{self.detailed_actions_file}")
                 print(f"Detailed actions and duration is saved to:\n{tmp}")
             else:
                 print(f"TERMINAL. SKIP WRITING DETAILED RESULT FOR MODE: {self._mode}, EPISODE: {episode}")
@@ -316,34 +309,20 @@ class PortfolioOptimizationEnv(gym.Env):
             # transform action to numpy array (if it's a list)
             actions = np.array(actions, dtype=np.float32)
             date_str = self._info["end_time"].strftime("%Y-%m-%d")
-            # print(f"ACTIONS FROM EIIE MODEL ON {date_str}: {actions}")
-            # print(f"SUM OF THE ACTIONS: {np.sum(actions)}")
-            # if np.isnan(actions).any():
-            #     raise ValueError(f"FOUND NAN IN MODEL ACTIONS EPISODE {episode}: {actions}")
-            # if date_str == "2023-04-06":
-            #     raise ValueError(f"STOP")
 
             # if necessary, normalize weights
             if math.isclose(np.sum(actions), 1, abs_tol=1e-6) and np.min(actions) >= 0:
                 weights = actions
             else:
                 weights = self._softmax_normalization(actions)
-            # print(f"ACTIONS AFTER PROCESSING 1 FROM EIIE MODEL ON {date_str}: {weights}")
-            # print(f"SUM OF THE ACTIONS FROM PROCESSING 1: {np.sum(actions)}")
 
             # POSTPROCESSING WEIGHTS - MIFTAH
             # 1. Round weights to multiplies of 0.05
             weights = np.round(weights * 20) / 20
             # if after this command the sum is zero 0, then we reset the value back
-            # print(f"ACTIONS AFTER PROCESSING 2- MULTIPLIES OF 0.05. FROM EIIE MODEL ON {date_str}: {weights}")
             # 2. Set weights < 0.05 to 0
             weights[weights < 0.05] = 0
-            # print(f"ACTIONS AFTER PROCESSING 2- SET BELOW 0.05 TO ZERO. FROM EIIE MODEL ON {date_str}: {weights}")
             # Renormalize weights to sum to 1 after zeroing small weights
-            # V1
-            # weights = weights / np.sum(weights)
-            # print(f"ACTIONS AFTER PROCESSING 2- DIVIDE BY SUM OF WEIGHTS. FROM EIIE MODEL ON {date_str}: {weights}")
-            # V2
             if np.sum(weights) == 0:
                 weights[0] = 1.0
             else:
@@ -355,9 +334,12 @@ class PortfolioOptimizationEnv(gym.Env):
                 tmp = [0] * len(self._info["tics"].tolist())
                 self._prev_weights = [1] + tmp
                 self._first_episode = False
-            # print(episode, self._prev_weights)
             portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
+            # so, i moved self._portfolio_value here so it will not reset the value after the cost fee model calculation
+            # previously, below line is in line 454
+            # https://git.tuntun.co.id/ai/poc/finrl/-/blob/3cb5e51f748a9c12d768f6c9ef0ff27a99edcf60/finrl_pip/meta/env_portfolio_optimization/env_portfolio_optimization.py#L487
             self._portfolio_value = np.sum(portfolio)
+
             self._interim_portfolio_value = np.sum(portfolio)
 
             # save initial portfolio weights for this time step
@@ -413,8 +395,6 @@ class PortfolioOptimizationEnv(gym.Env):
                 last_mu = 1.0
                 # Initialize mu considering both buying and selling fees
                 mu = 1.0 - buying_fee_pct - selling_fee_pct
-                # mu = 1 - 0.0025 - 0.0025
-                # minimum mu = 0.005
 
                 # Iteratively solve for mu to account for transaction costs
                 max_iterations = 1000
@@ -422,42 +402,10 @@ class PortfolioOptimizationEnv(gym.Env):
                 tolerance = 1e-10
 
                 # Calculate w_i based on price variation
-                # ltmp = last_weights * self._price_variation
                 ltmp = self._prev_weights * self._price_variation
                 w_i = np.zeros_like(ltmp)
                 if np.sum(ltmp) > 0:
                     w_i = ltmp / np.sum(ltmp)
-
-                # Define the equation to solve: f(mu) = 0
-                # def equation(mu):
-                #     # Calculate selling reductions and costs
-                #     selling_reduction = np.maximum(w_i[1:] - mu * weights[1:], 0)
-                #     selling_cost = selling_fee_pct * np.sum(selling_reduction)
-                #     # Calculate buying increases and costs
-                #     buying_increase = np.maximum(mu * weights[1:] - w_i[1:], 0)
-                #     buying_cost = buying_fee_pct * np.sum(buying_increase)
-                #     # Define the equation based on mu
-                #     return mu - (1 - buying_fee_pct * weights[0] - selling_cost - buying_cost) / (1 - buying_fee_pct * weights[0])
-
-                # try:
-                #     # Initial guess for mu
-                #     initial_mu = 1.0 - buying_fee_pct - selling_fee_pct
-                #     # Solve for mu using Newton-Raphson method
-                #     # Explanation: https://docs.google.com/document/d/11JchD-LxiSccEjjkwzoE7RDqxKQmO0_uMrWAhM2qTG4/edit?usp=sharing
-                #     mu = newton(equation, initial_mu, tol=1e-10, maxiter=1000)
-                # except RuntimeError:
-                #     # Handle the case when the solver did not converge
-                #     # Fallback to initial_mu or raise an error
-                #     mu = 1.0 - buying_fee_pct - selling_fee_pct
-                #     print("Warning. Episode {episode}: mu calculation did not converge. Using initial guess.\n")
-                #     # Alternatively, uncomment the next line to raise an error
-                #     # raise ValueError("mu calculation did not converge")
-
-                # After finding mu, calculate selling and buying costs - V1
-                # selling_reduction = np.maximum(w_i[1:] - mu * weights[1:], 0)
-                # selling_cost = selling_fee_pct * np.sum(selling_reduction)
-                # buying_increase = np.maximum(mu * weights[1:] - w_i[1:], 0)
-                # buying_cost = buying_fee_pct * np.sum(buying_increase)
 
                 # After finding mu, calculate selling and buying costs (MU REMOVED) - V2
                 date_str = self._info["end_time"].strftime("%Y-%m-%d")
@@ -465,13 +413,6 @@ class PortfolioOptimizationEnv(gym.Env):
                 selling_cost = selling_fee_pct * np.sum(selling_reduction)
                 buying_increase = np.maximum(weights[1:] - w_i[1:], 0)
                 buying_cost = buying_fee_pct * np.sum(buying_increase)
-                # print(f"DATE: {date_str}")
-                # print(f"SELLING REDUCTION: {selling_reduction}")
-                # print(f"BUYING INCREASE: {buying_increase}")
-                # print(f"W_I: {w_i[1:]}")
-                # print(f"WEIGHTS: {weights[1:]}\n")
-                # if date_str == "2023-09-25":
-                #     raise ValueError(f"STOP")
 
                 # Assign separate transaction costs
                 self._selling_cost = selling_cost
@@ -482,32 +423,12 @@ class PortfolioOptimizationEnv(gym.Env):
 
                 # Update portfolio value
                 self._info["trf_mu"] = mu
-                # self._portfolio_value = mu * self._portfolio_value
-                # self._portfolio_value = self._portfolio_value - self._transaction_cost
-                # print(f"SELF._PORTFOLIO_VALUE BEFORE: {self._portfolio_value}")
                 self._portfolio_value = self._portfolio_value * (1 - self._transaction_cost)
-                # print(f"SELF._PORTFOLIO_VALUE AFTER: {self._portfolio_value}")
-                # self._portfolio_value = self._portfolio_value_prev * (1 - self._transaction_cost)
 
                 # **TRF_V2 SECTION END**
 
             # save initial portfolio value of this time step
             self._asset_memory["initial"].append(self._portfolio_value)
-
-            # SET NAN WEIGHT TO 0 - MIFTAH
-            # weights[np.isnan(weights)] = 0
-            # if np.sum(weights) > 1:
-            #     weights = self._softmax_normalization(weights)
-
-            # time passes and time variation changes the portfolio distribution
-            # portfolio = self._portfolio_value * (weights * self._price_variation)
-            # CALCULATE TODAY'S PORTFOLIO USING WEIGHTS ON PREV DAY - MIFTAH
-            # if self._first_episode:
-            #     tmp = [0] * len(self._info["tics"].tolist())
-            #     self._prev_weights = [1] + tmp
-            #     self._first_episode = False
-            # # print(episode, self._prev_weights)
-            # portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
             self._prev_weights = weights
 
             date_str = self._info["end_time"].strftime("%Y-%m-%d")
@@ -519,7 +440,6 @@ class PortfolioOptimizationEnv(gym.Env):
                 "selling_cost": self._selling_cost,
                 "transaction_cost": self._transaction_cost,
             }
-            # print(date_str, self._portfolio_value)
 
             # CALCULATE WEIGHTS PERCENT - MIFTAH
             weights_percent = weights * 100
@@ -531,7 +451,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 daily_log[f"{ticker}_v"] = self._price_variation[i]
 
             # calculate new portfolio value and weights
-            # self._portfolio_value = np.sum(portfolio) # MOVED TO LINE 358
+            # self._portfolio_value = np.sum(portfolio) # MOVED TO LINE 341
             weights = portfolio / self._portfolio_value
 
             daily_log["portfolio"] = self._portfolio_value
@@ -581,7 +501,6 @@ class PortfolioOptimizationEnv(gym.Env):
             # TRANSACTION COST AFFECTS PORTFOLIO REWARD CALCULATION - MIFTAH
             if not self._use_sortino_ratio:
                 portfolio_reward = rate_of_return
-            # print(f"PORTFOLIO REWARD: {portfolio_reward}")
             if portfolio_reward > 0:
                 portfolio_reward = np.log(portfolio_reward - (self._alpha * self._transaction_cost))
 

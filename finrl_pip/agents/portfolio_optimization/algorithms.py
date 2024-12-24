@@ -17,6 +17,7 @@ from .utils import RLDataset
 # below lines are added by miftah
 import os
 import json
+import matplotlib.pyplot as plt
 
 
 class PolicyGradient:
@@ -83,6 +84,12 @@ class PolicyGradient:
         # main_dir = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train"
         # d = f"{main_dir}/v2_result/EIIE"
         # self._checkpoint_dir = f"{d}/checkpoint"
+        self._asset_history = {
+            "train": [],
+            "dev": [],
+            "test": [],
+            "episodes": []
+        }
 
         self._policy_str = policy_str
         self._dev_env = dev_env
@@ -191,6 +198,45 @@ class PolicyGradient:
             # validation step
             if self.validation_env:
                 self.test(self.validation_env)
+
+            # -----------------------------------------------------------------
+            # TODO Implementation: Plot 3 graphs (train, dev, test) and save
+            # -----------------------------------------------------------------
+            # 1. Accumulate each mode's final asset in self._asset_history
+            self._asset_history["train"].append(asset_episode["train"])
+            self._asset_history["dev"].append(asset_episode["dev"])
+            self._asset_history["test"].append(asset_episode["test"])
+            self._asset_history["episodes"].append(episode)
+
+            # 2. For each mode (train/dev/test), generate and save a plot of
+            #    Rate of Return (%) vs Episode.
+
+            for mode in ["train", "dev", "test"]:
+                # Calculate rate of return (%) for each episode in history
+                # final_asset / initial_amount * 100
+                returns = [
+                    (asset / self.train_env._initial_amount) * 100.0
+                    for asset in self._asset_history[mode]
+                ]
+
+                # Create a new figure per mode
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.plot(self._asset_history["episodes"], returns, marker='o', label=mode.upper())
+
+                ax.set_title(f"Rate of Return for {mode.upper()}")
+                ax.set_xlabel("Episode")
+                ax.set_ylabel("Return (%)")
+                ax.grid(True)
+                ax.legend(loc="best")
+
+                # Save the figure in the checkpoint directory for this episode
+                dg = self._checkpoint_dir.split("/")[:-1]
+                dg = "/".join(dg)
+                outpath = f"{dg}/{mode}.png"
+                plt.savefig(outpath)
+                plt.close(fig)  # close to free memory
+
+            # End of the "TODO" block
 
     def _save_model(self, episode):
         d = f"{self._checkpoint_dir}-{episode}"
