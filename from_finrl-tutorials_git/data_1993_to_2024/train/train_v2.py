@@ -1,6 +1,3 @@
-            # TODO: check if any value in actions is na0
-# preprocessed_v3a is v3 that BAYU 2017-12-04 is updated manually in check_data.py
-# preprocessed_v4 is produced by sliding_windows_normalization
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
@@ -14,6 +11,8 @@ from normalization_utils import (
     sliding_windows_normalization,
 )
 
+# preprocessed_v3a is v3 that BAYU 2017-12-04 is updated manually in check_data.py
+# preprocessed_v4 is produced by sliding_windows_normalization
 # in v3-a, ELSA on 2024-11-20 has wrong ohlcv value
 # fprocessed_v3a = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tuntun_api_data_with_features_v3-a.csv"
 # we fixed that on v4-a
@@ -37,6 +36,8 @@ processed = pd.read_csv(fprocessed_v5)
 print(processed)
 
 tickers = sorted(processed["tic"].unique())
+# tickers = tickers[:10]
+# processed = processed[processed["tic"].isin(tickers)]
 print(f"TICKERS IN DATA ({len(tickers)}): {processed['tic'].unique()}")
 
 TRAIN_START_DATE = "2010-11-29"
@@ -45,6 +46,14 @@ DEV_START_DATE = "2023-01-01"
 DEV_END_DATE = "2023-12-31"
 TEST_START_DATE = "2024-01-01"
 TEST_END_DATE = "2024-11-26"
+
+# TRAIN_START_DATE = "2023-11-29"
+# TRAIN_END_DATE = "2024-04-18"
+# DEV_START_DATE = "2024-04-19"
+# DEV_END_DATE = "2024-06-18"
+# TEST_START_DATE = "2024-06-19"
+# TEST_END_DATE = "2024-08-18"
+TIME_WINDOW = 50
 x = split_data_based_on_date(
         processed,
         TRAIN_START_DATE,
@@ -55,7 +64,7 @@ x = split_data_based_on_date(
         TEST_END_DATE)
 train_processed, dev_processed, test_processed = x
 
-train_dates = sorted(train_processed["date"].unique())[50:]
+train_dates = sorted(train_processed["date"].unique())[TIME_WINDOW:]
 train_processed = train_processed[train_processed["date"].isin(train_dates)]
 
 print("\n====================================")
@@ -92,7 +101,6 @@ if MODE == "train":
     checkpoint_dir = f"{d}/checkpoint"
     os.makedirs(d, exist_ok=True)
 
-TIME_WINDOW = 50
 features=[
     "close",
     "high",
@@ -116,6 +124,7 @@ selling_fee_pct = 0.0025
 time_column = "date"
 tics_in_portfolio = "all"
 normalize_df = "by_previous_time"
+reward_scaling = 1
 alpha = 1
 use_sortino_ratio = True
 risk_free_rate = 0.05
@@ -141,6 +150,7 @@ environment_train = PortfolioOptimizationEnv(
         risk_free_rate=risk_free_rate,
         detailed_actions_file=detailed_actions_file,
         save_detailed_step=save_detailed_step,
+        reward_scaling=reward_scaling,
     )
 environment_dev = PortfolioOptimizationEnv(
         df_portfolio_dev,
@@ -160,6 +170,7 @@ environment_dev = PortfolioOptimizationEnv(
         risk_free_rate=risk_free_rate,
         detailed_actions_file=detailed_actions_file,
         save_detailed_step=save_detailed_step,
+        reward_scaling=reward_scaling,
     )
 environment_test = PortfolioOptimizationEnv(
         df_portfolio_test,
@@ -179,8 +190,12 @@ environment_test = PortfolioOptimizationEnv(
         risk_free_rate=risk_free_rate,
         detailed_actions_file=detailed_actions_file,
         save_detailed_step=save_detailed_step,
+        reward_scaling=reward_scaling,
     )
 train_env_conf = {
+    "train_range": f"{TRAIN_START_DATE}_{TRAIN_END_DATE}",
+    "dev_range": f"{DEV_START_DATE}_{DEV_END_DATE}",
+    "test_range": f"{TEST_START_DATE}_{TEST_END_DATE}",
     "initial_amount": initial_amount,
     "comission_fee_model": comission_fee_model,
     # "comission_fee_pct": comission_fee_pct,
@@ -191,6 +206,7 @@ train_env_conf = {
     "time_column": time_column,
     "normalize_df": normalize_df,
     "tics_in_portfolio": tics_in_portfolio,
+    "reward_scaling": reward_scaling,
     "alpha": alpha,
     "mode": MODE,
     "use_sortino_ratio": use_sortino_ratio,
@@ -216,18 +232,21 @@ lr = 0.01
 action_noise = 0.1
 episodes = 10
 policy_str = "EIIE"
+use_reward_in_loss = True
 model_kwargs = {
     "lr": lr,
     "policy": EIIE,
     "action_noise": action_noise,
     "checkpoint_dir": checkpoint_dir,
-    "policy_str": policy_str
+    "policy_str": policy_str,
+    "use_reward_in_loss": use_reward_in_loss
 }
 model_kwargs_str = {
     "lr": lr,
     "policy": policy_str,
     "action_noise": action_noise,
-    "episodes": episodes
+    "episodes": episodes,
+    "use_reward_in_loss": use_reward_in_loss
 }
 policy_kwargs = {
     "initial_features": initial_features,
@@ -255,7 +274,8 @@ if MODE == "train":
 # d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241220_095522_profitable_in_train_nan_in_dev_and_test"
 # d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241223_174514_graph_ep10/checkpoint-10"
 # d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241223_174553_graph_ep100/checkpoint-100"
-# model_path = f"{d}/policy_EIIE_100.pt"
+# d = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train/v2_result/eiie_20241224_145508_test_profitable_ep10_time_window_5/checkpoint-10"
+# model_path = f"{d}/policy_EIIE_10.pt"
 
 # if MODE == "train":
 #     torch.save(model.train_policy.state_dict(), model_path)
