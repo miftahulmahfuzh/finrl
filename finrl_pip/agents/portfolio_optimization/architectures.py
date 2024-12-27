@@ -234,6 +234,9 @@ class EI3(nn.Module):
         features = torch.cat(
             [last_stocks, short_features, medium_features, long_features], dim=1
         )
+        features = torch.cat(
+            [last_stocks, short_features, medium_features, long_features], dim=1
+        )
         output = self.final_convolution(features)
         output = torch.cat([cash_bias, output], dim=2)
 

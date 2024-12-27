@@ -51,7 +51,8 @@ class PolicyGradient:
         checkpoint_dir="",
         policy_str="",
         dev_env=None,
-        test_env=None
+        test_env=None,
+        use_reward_in_loss=False
     ):
         """Initializes Policy Gradient for portfolio optimization.
 
@@ -94,6 +95,8 @@ class PolicyGradient:
         self._policy_str = policy_str
         self._dev_env = dev_env
         self._test_env = test_env
+        self._use_reward_in_loss = use_reward_in_loss
+        print(f"USE REWARD IN LOSS: {self._use_reward_in_loss}")
 
     def _setup_train(self, env, policy, batch_size, lr, optimizer):
         """Initializes algorithm before training.
@@ -150,7 +153,9 @@ class PolicyGradient:
                 next_obs, reward, done, info = self.train_env.step(action, episode)
 
                 # add experience to replay buffer
-                exp = (obs, last_action, info["price_variation"], info["trf_mu"])
+                # exp = (obs, last_action, info["price_variation"], info["trf_mu"])
+                # added reward to calculate during gradient_ascent - miftah
+                exp = (obs, last_action, info["price_variation"], info["trf_mu"], reward)
                 self.train_buffer.append(exp)
 
                 # update policy networks
@@ -326,7 +331,9 @@ class PolicyGradient:
             # print(f"INFO: {info['price_variation'].shape}")
 
             # add experience to replay buffer
-            exp = (obs, last_action, info["price_variation"], info["trf_mu"])
+            # exp = (obs, last_action, info["price_variation"], info["trf_mu"])
+            # added reward to calculate during gradient_ascent - miftah
+            exp = (obs, last_action, info["price_variation"], info["trf_mu"], reward)
             self.test_buffer.append(exp)
 
             # update policy networks
@@ -343,7 +350,7 @@ class PolicyGradient:
         """
         # get batch data from dataloader
         # print(f"TEST: {test}")
-        obs, last_actions, price_variations, trf_mu = (
+        obs, last_actions, price_variations, trf_mu, reward = (
             next(iter(self.test_dataloader))
             if test
             else next(iter(self.train_dataloader))
@@ -352,6 +359,7 @@ class PolicyGradient:
         last_actions = last_actions.to(self.device)
         price_variations = price_variations.to(self.device)
         trf_mu = trf_mu.unsqueeze(1).to(self.device)
+        # print(f"REWARD BEFORE UNSQUEEZE: {reward}\n")
 
         # define policy loss (negative for gradient ascent)
         mu = (
@@ -359,9 +367,23 @@ class PolicyGradient:
             if test
             else self.train_policy.mu(obs, last_actions)
         )
-        policy_loss = -torch.mean(
-            torch.log(torch.sum(mu * price_variations * trf_mu, dim=1))
-        )
+        policy_loss_tmp = None
+        if self._use_reward_in_loss:
+            reward = reward.unsqueeze(1).to(self.device)
+            # policy_loss_tmp *= reward
+            policy_loss_tmp = torch.log(torch.sum(mu * price_variations * trf_mu, dim=1)) * reward
+        else:
+            policy_loss_tmp = torch.log(torch.sum(mu * price_variations * trf_mu, dim=1))
+        policy_loss = -torch.mean(policy_loss_tmp)
+        # policy_loss = -torch.mean(
+        #     torch.log(torch.sum(mu * price_variations * trf_mu, dim=1)) * reward
+        # )
+        # print(f"REWARD: {reward}. POLICY_LOSS: {policy_loss}")
+        # TRY TO ADD REWARD IN POLICY_LOSS
+        # CHANGED BY MIFTAH - REMOVED trf_mu
+        # policy_loss = -torch.mean(
+        #     torch.log(torch.sum(mu * price_variations, dim=1))
+        # )
 
         # update policy network
         if test:

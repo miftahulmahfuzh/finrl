@@ -308,6 +308,9 @@ class PortfolioOptimizationEnv(gym.Env):
         else:
             # transform action to numpy array (if it's a list)
             actions = np.array(actions, dtype=np.float32)
+            if np.isnan(actions).any():
+                print(f"ACTIONS: {actions}")
+                raise ValueError("Array 'actions' contains NaN values.")
             date_str = self._info["end_time"].strftime("%Y-%m-%d")
 
             # if necessary, normalize weights
