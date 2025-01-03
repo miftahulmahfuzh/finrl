@@ -148,8 +148,8 @@ class PolicyGradient:
                     self.train_policy(obs_batch, last_action_batch), self.action_noise
                 )
                 self.train_pvm.add(action)
-
                 # run simulation step
+
                 next_obs, reward, done, info = self.train_env.step(action, episode)
 
                 # add experience to replay buffer
@@ -370,7 +370,6 @@ class PolicyGradient:
         policy_loss_tmp = None
         if self._use_reward_in_loss:
             reward = reward.unsqueeze(1).to(self.device)
-            # policy_loss_tmp *= reward
             policy_loss_tmp = torch.log(torch.sum(mu * price_variations * trf_mu, dim=1)) * reward
         else:
             policy_loss_tmp = torch.log(torch.sum(mu * price_variations * trf_mu, dim=1))

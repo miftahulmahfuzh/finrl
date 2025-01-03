@@ -7,9 +7,9 @@ import json
 from utils import (
     split_data_based_on_date,
 )
-from normalization_utils import (
-    sliding_windows_normalization,
-)
+# from normalization_utils import (
+#     sliding_windows_normalization,
+# )
 
 # preprocessed_v3a is v3 that BAYU 2017-12-04 is updated manually in check_data.py
 # preprocessed_v4 is produced by sliding_windows_normalization
@@ -22,8 +22,10 @@ from normalization_utils import (
 # fprocessed_v4b = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_with_features_v4-b.csv"
 # We got StopIteration Error (https://docs.google.com/document/d/1hiKPXlE9SPAW4vm4C-p5n9XQnr3zFj6Nydhj_XSd72g/edit?usp=sharing) in v4-b
 # so, we try to rerun FeatureEngineer on v4b. that is v5
-fprocessed_v5 = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_with_features_v5.csv"
-processed = pd.read_csv(fprocessed_v5)
+# in v6, we add december 2024 data using tuntun api
+fprocessed = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_with_features_v5.csv"
+processed = pd.read_csv(fprocessed)
+# fprocessed = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_with_features_v6.csv"
 # processed = sliding_windows_normalization(processed)
 
 # columns = ["date", "tic", "high", "high_normalized", "low", "low_normalized", "close", "close_normalized", "volume", "volume_normalized"]
@@ -46,6 +48,8 @@ DEV_START_DATE = "2023-01-01"
 DEV_END_DATE = "2023-12-31"
 TEST_START_DATE = "2024-01-01"
 TEST_END_DATE = "2024-11-26"
+if "v6" in fprocessed:
+    TEST_END_DATE = "2024-12-31"
 
 # TRAIN_START_DATE = "2023-11-29"
 # TRAIN_END_DATE = "2024-04-18"
@@ -127,8 +131,14 @@ normalize_df = "by_previous_time"
 reward_scaling = 1
 alpha = 1
 use_sortino_ratio = True
-risk_free_rate = 0.05
-save_detailed_step = 2
+# risk_free_rate = 0.05
+risk_free_rate = 0.00013
+episodes = 500 # i moved episodes here because it's related with save_detailed_step
+save_detailed_step = 25
+cycle_length = 1
+use_sell_indicator = True
+sell_indicator_column = "turbulence"
+sell_indicator_threshold = 99
 
 # detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 detailed_actions_file = checkpoint_dir
@@ -151,6 +161,10 @@ environment_train = PortfolioOptimizationEnv(
         detailed_actions_file=detailed_actions_file,
         save_detailed_step=save_detailed_step,
         reward_scaling=reward_scaling,
+        cycle_length=cycle_length,
+        use_sell_indicator=use_sell_indicator,
+        sell_indicator_column=sell_indicator_column,
+        sell_indicator_threshold=sell_indicator_threshold,
     )
 environment_dev = PortfolioOptimizationEnv(
         df_portfolio_dev,
@@ -171,6 +185,10 @@ environment_dev = PortfolioOptimizationEnv(
         detailed_actions_file=detailed_actions_file,
         save_detailed_step=save_detailed_step,
         reward_scaling=reward_scaling,
+        cycle_length=cycle_length,
+        use_sell_indicator=use_sell_indicator,
+        sell_indicator_column=sell_indicator_column,
+        sell_indicator_threshold=sell_indicator_threshold,
     )
 environment_test = PortfolioOptimizationEnv(
         df_portfolio_test,
@@ -191,6 +209,10 @@ environment_test = PortfolioOptimizationEnv(
         detailed_actions_file=detailed_actions_file,
         save_detailed_step=save_detailed_step,
         reward_scaling=reward_scaling,
+        cycle_length=cycle_length,
+        use_sell_indicator=use_sell_indicator,
+        sell_indicator_column=sell_indicator_column,
+        sell_indicator_threshold=sell_indicator_threshold,
     )
 train_env_conf = {
     "train_range": f"{TRAIN_START_DATE}_{TRAIN_END_DATE}",
@@ -211,8 +233,12 @@ train_env_conf = {
     "mode": MODE,
     "use_sortino_ratio": use_sortino_ratio,
     "risk_free_rate": risk_free_rate,
+    "cycle_length": cycle_length,
+    "use_sell_indicator": use_sell_indicator,
+    "sell_indicator_column": sell_indicator_column,
+    "sell_indicator_threshold": sell_indicator_threshold,
     "save_detailed_step": save_detailed_step,
-    "detailed_actions_file": detailed_actions_file
+    "checkpoint_dir": checkpoint_dir
 }
 if MODE == "train":
     train_env_str = json.dumps(train_env_conf, indent=3)
@@ -230,7 +256,6 @@ print(device)
 
 lr = 0.01
 action_noise = 0.1
-episodes = 10
 policy_str = "EIIE"
 use_reward_in_loss = True
 model_kwargs = {
@@ -248,11 +273,14 @@ model_kwargs_str = {
     "episodes": episodes,
     "use_reward_in_loss": use_reward_in_loss
 }
+k_size = 3
+conv_mid_features = 2
+conv_final_features = 20
 policy_kwargs = {
     "initial_features": initial_features,
-    "k_size": 3,
-    "conv_mid_features": 2,
-    "conv_final_features": 20,
+    "k_size": k_size,
+    "conv_mid_features": conv_mid_features,
+    "conv_final_features": conv_final_features,
     "time_window": TIME_WINDOW
 }
 model_conf = {

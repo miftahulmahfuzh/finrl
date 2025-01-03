@@ -74,6 +74,7 @@ class EIIE(nn.Module):
         if isinstance(observation, np.ndarray):
             observation = torch.from_numpy(observation)
         observation = observation.to(self.device).float()
+        # print(f"Observation Shape: {observation.shape}")
 
         if isinstance(last_action, np.ndarray):
             last_action = torch.from_numpy(last_action)

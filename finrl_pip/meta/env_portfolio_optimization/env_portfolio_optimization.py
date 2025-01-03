@@ -95,12 +95,16 @@ class PortfolioOptimizationEnv(gym.Env):
         cwd="./",
         new_gym_api=False,
         # below is added by miftah
+        use_sell_indicator=False,
+        sell_indicator_column="",
+        sell_indicator_threshold=99,
         buying_fee_pct=0,
         selling_fee_pct=0,
         alpha=0.01,
         mode="train", # options: train, dev, test
         use_sortino_ratio=False,
         risk_free_rate=0,
+        cycle_length=1, # do reallocation for every cycle_length days
         detailed_actions_file="",
         eval_episode=0, # what training episode is the evaluation (dev, test) currently on
         save_detailed_step=25 # write detailed action xlsx for each save_detailed_step
@@ -155,6 +159,10 @@ class PortfolioOptimizationEnv(gym.Env):
         self._new_gym_api = new_gym_api
 
         # added by miftah to record detailed actions for each day
+        self._use_sell_indicator = use_sell_indicator
+        self._sell_indicator_column = sell_indicator_column
+        self._sell_indicator_threshold = sell_indicator_threshold
+        self._turbulence = 0
         self._detailed_actions_memory = []
         self._start_timestamp = dt.now()
         self._mode = mode
@@ -165,6 +173,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._first_episode = True
         self._use_sortino_ratio = use_sortino_ratio
         self._risk_free_rate = risk_free_rate
+        self._cycle_length = cycle_length
         self._buying_fee_pct = buying_fee_pct
         self._selling_fee_pct = selling_fee_pct
         self._buying_cost = 0.0  # Initialize buying cost
@@ -275,7 +284,8 @@ class PortfolioOptimizationEnv(gym.Env):
                 time limit. Currently, it's always False.
             info: A dictionary containing informations about the last state.
         """
-        self._terminal = self._time_index >= len(self._sorted_times) - 1
+        # self._terminal = self._time_index >= len(self._sorted_times) - 1
+        self._terminal = self._time_index >= len(self._sorted_times) - self._cycle_length
 
         if self._terminal:
             if self._mode in ["dev", "test"]:
@@ -331,6 +341,24 @@ class PortfolioOptimizationEnv(gym.Env):
             else:
                 weights = weights / np.sum(weights)
 
+            # load next state
+            # self._time_index += 1
+            self._time_index += self._cycle_length
+            self._state, self._info, self._turbulence = self._get_state_and_info_from_time_index(
+                self._time_index
+            )
+            # USING TURBULENCE AS SELL INDICATOR - MIFTAH
+            sell_all = False
+            # print(f"TURBULENCE: {self._turbulence}")
+            if self._use_sell_indicator:
+                if self._turbulence > self._sell_indicator_threshold:
+                    sell_all = True
+            if sell_all:
+                # print(f"SELL ALL: {sell_all}\nTURBULENCE: {self._turbulence}\nTHRESHOLD: {self._sell_indicator_threshold}")
+                tmp = [0] * len(self._info["tics"].tolist())
+                weights = [1] + tmp
+                weights = np.asarray(weights)
+
             # CALCULATE TODAY'S PORTFOLIO USING WEIGHTS ON PREV DAY - MIFTAH
             # MOVED FROM LINE 448 BELOW
             if self._first_episode:
@@ -352,10 +380,11 @@ class PortfolioOptimizationEnv(gym.Env):
             last_weights = self._final_weights[-1]
 
             # load next state
-            self._time_index += 1
-            self._state, self._info = self._get_state_and_info_from_time_index(
-                self._time_index
-            )
+            # self._time_index += 1
+            # self._time_index += self._cycle_length
+            # self._state, self._info, self._turbulence = self._get_state_and_info_from_time_index(
+            #     self._time_index
+            # )
 
             # if using weights vector modifier, we need to modify weights vector
             if self._comission_fee_model == "wvm":
@@ -439,6 +468,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 "date": date_str,
                 "portfolio": self._portfolio_value,
                 "interim_portfolio": self._interim_portfolio_value,
+                "turbulence": self._turbulence,
                 "buying_cost": self._buying_cost,
                 "selling_cost": self._selling_cost,
                 "transaction_cost": self._transaction_cost,
@@ -504,8 +534,12 @@ class PortfolioOptimizationEnv(gym.Env):
             # TRANSACTION COST AFFECTS PORTFOLIO REWARD CALCULATION - MIFTAH
             if not self._use_sortino_ratio:
                 portfolio_reward = rate_of_return
-            if portfolio_reward > 0:
-                portfolio_reward = np.log(portfolio_reward - (self._alpha * self._transaction_cost))
+            portfolio_reward_tmp = portfolio_reward - (self._alpha * self._transaction_cost)
+            if portfolio_reward_tmp > 0:
+                # portfolio_reward = np.log(portfolio_reward - (self._alpha * self._transaction_cost))
+                portfolio_reward = np.log(portfolio_reward_tmp)
+            else:
+                portfolio_reward = max(portfolio_reward, 0)
 
             # save portfolio return memory
             self._portfolio_return_memory.append(portfolio_return)
@@ -541,7 +575,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._time_index = self._time_window - 1
         self._reset_memory()
 
-        self._state, self._info = self._get_state_and_info_from_time_index(
+        self._state, self._info, self._turbulence = self._get_state_and_info_from_time_index(
             self._time_index
         )
         self._portfolio_value = self._initial_amount
@@ -577,14 +611,17 @@ class PortfolioOptimizationEnv(gym.Env):
                 "start_time": Start time of current time window,
                 "start_time_index": Index of start time of current time window,
                 "end_time": End time of current time window,
-                "end_time_index": Index of end time of current time window,
                 "data": Data related to the current time window,
+                "end_time_index": Index of end time of current time window,
                 "price_variation": Price variation of current time step
                 }
         """
         # returns state in form (channels, tics, timesteps)
         end_time = self._sorted_times[time_index]
         start_time = self._sorted_times[time_index - (self._time_window - 1)]
+        # print(f"TIME_INDEX: {time_index}")
+        # print(f"START_TIME: {start_time}")
+        # print(f"END_TIME: {end_time}\n")
 
         # define data to be used in this time step
         self._data = self._df[
@@ -597,6 +634,11 @@ class PortfolioOptimizationEnv(gym.Env):
             self._df_price_variation[self._time_column] == end_time
         ][self._valuation_feature].to_numpy()
         self._price_variation = np.insert(self._price_variation, 0, 1)
+
+        # get turbulence value
+        turbulence = self._df[
+            self._df[self._time_column] == end_time
+        ][self._sell_indicator_column].iloc[0]
 
         # define state to be returned
         state = None
@@ -615,7 +657,7 @@ class PortfolioOptimizationEnv(gym.Env):
             "data": self._data,
             "price_variation": self._price_variation,
         }
-        return self._standardize_state(state), info
+        return self._standardize_state(state), info, turbulence
 
     def render(self, mode="human"):
         """Renders the environment.
