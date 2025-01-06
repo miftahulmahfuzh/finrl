@@ -96,10 +96,13 @@ df_portfolio_test = test_processed
 from finrl.meta.env_portfolio_optimization.env_portfolio_optimization import PortfolioOptimizationEnv
 
 MODE = "train"
+# policy_str setting should be below in policy_kwargs
+# but moved here to facilitate checkpoint_dir naming
+policy_str = "EI3"
 checkpoint_dir = ""
 if MODE == "train":
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    model_name = f"eiie_{timestamp}"
+    model_name = f"{policy_str.lower()}_{timestamp}"
     main_dir = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train"
     d = f"{main_dir}/v2_result/{model_name}"
     checkpoint_dir = f"{d}/checkpoint"
@@ -133,8 +136,9 @@ alpha = 1
 use_sortino_ratio = True
 # risk_free_rate = 0.05
 risk_free_rate = 0.00013
-episodes = 500 # i moved episodes here because it's related with save_detailed_step
-save_detailed_step = 25
+# episodes variable is moved here because it's related with save_detailed_step
+episodes = 10
+save_detailed_step = 2
 cycle_length = 1
 use_sell_indicator = True
 sell_indicator_column = "turbulence"
@@ -246,7 +250,10 @@ if MODE == "train":
     with open(f"{d}/{MODE}_env_conf.json", "w+") as f:
         f.write(train_env_str)
 
-from finrl.agents.portfolio_optimization.architectures import EIIE
+from finrl.agents.portfolio_optimization.architectures import (
+    EIIE,
+    EI3,
+)
 from finrl.agents.portfolio_optimization.models import DRLAgent
 import torch
 
@@ -256,11 +263,13 @@ print(device)
 
 lr = 0.01
 action_noise = 0.1
-policy_str = "EIIE"
+policy = EIIE
+if policy_str == "EI3":
+    policy = EI3
 use_reward_in_loss = True
 model_kwargs = {
     "lr": lr,
-    "policy": EIIE,
+    "policy": policy,
     "action_noise": action_noise,
     "checkpoint_dir": checkpoint_dir,
     "policy_str": policy_str,
@@ -273,16 +282,32 @@ model_kwargs_str = {
     "episodes": episodes,
     "use_reward_in_loss": use_reward_in_loss
 }
-k_size = 3
-conv_mid_features = 2
-conv_final_features = 20
-policy_kwargs = {
-    "initial_features": initial_features,
-    "k_size": k_size,
-    "conv_mid_features": conv_mid_features,
-    "conv_final_features": conv_final_features,
-    "time_window": TIME_WINDOW
-}
+policy_kwargs = {}
+if policy_str == "EIIE":
+    k_size = 3
+    conv_mid_features = 2
+    conv_final_features = 20
+    policy_kwargs = {
+        "initial_features": initial_features,
+        "k_size": k_size,
+        "conv_mid_features": conv_mid_features,
+        "conv_final_features": conv_final_features,
+        "time_window": TIME_WINDOW
+    }
+elif policy_str == "EI3":
+    k_short = 3
+    k_medium = 21
+    conv_mid_features = 3
+    conv_final_features = 20
+    policy_kwargs = {
+        "initial_features": initial_features,
+        "k_short": k_short,
+        "k_medium": k_medium,
+        "conv_mid_features": conv_mid_features,
+        "conv_final_features": conv_final_features,
+        "time_window": TIME_WINDOW
+    }
+
 model_conf = {
     "model_kwargs": model_kwargs_str,
     "policy_kwargs": policy_kwargs
@@ -293,7 +318,11 @@ if MODE == "train":
     with open(f"{d}/model_conf.json", "w+") as f:
         f.write(model_conf_str)
 
-model = DRLAgent(environment_train, dev_env=environment_dev, test_env=environment_test).get_model("pg", device, model_kwargs, policy_kwargs)
+model = DRLAgent(
+    environment_train,
+    dev_env=environment_dev,
+    test_env=environment_test
+).get_model("pg", device, model_kwargs, policy_kwargs)
 if MODE == "train":
     DRLAgent.train_model(model, episodes=episodes)
 

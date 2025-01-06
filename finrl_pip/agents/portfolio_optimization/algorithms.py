@@ -81,7 +81,7 @@ class PolicyGradient:
 
         # below lines are added by miftah
         self._checkpoint_dir = checkpoint_dir
-        print(f"SELF._CHECKPOINT_DIR: {checkpoint_dir}")
+        # print(f"SELF._CHECKPOINT_DIR: {checkpoint_dir}")
         # main_dir = "/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/train"
         # d = f"{main_dir}/v2_result/EIIE"
         # self._checkpoint_dir = f"{d}/checkpoint"
@@ -96,7 +96,7 @@ class PolicyGradient:
         self._dev_env = dev_env
         self._test_env = test_env
         self._use_reward_in_loss = use_reward_in_loss
-        print(f"USE REWARD IN LOSS: {self._use_reward_in_loss}")
+        # print(f"USE REWARD IN LOSS: {self._use_reward_in_loss}")
 
     def _setup_train(self, env, policy, batch_size, lr, optimizer):
         """Initializes algorithm before training.
@@ -132,9 +132,9 @@ class PolicyGradient:
         Args:
             episodes: Number of episodes to simulate.
         """
-        print(f"IN algorithms.py, PolicyGradient.train(). TOTAL EPISODES: {episodes}")
+        # print(f"IN algorithms.py-PolicyGradient.train(). TOTAL EPISODES: {episodes}")
         for episode in tqdm(range(1, episodes + 1)):
-            print(f"\nEPISODE: {episode}")
+            # print(f"\nEPISODE: {episode}")
             obs = self.train_env.reset()  # observation
             self.train_pvm.reset()  # reset portfolio vector memory
             done = False
@@ -205,7 +205,7 @@ class PolicyGradient:
                 self.test(self.validation_env)
 
             # -----------------------------------------------------------------
-            # TODO Implementation: Plot 3 graphs (train, dev, test) and save
+            # PLOT 3 graphs (train, dev, test) and save
             # -----------------------------------------------------------------
             # 1. Accumulate each mode's final asset in self._asset_history
             self._asset_history["train"].append(asset_episode["train"])
@@ -241,7 +241,7 @@ class PolicyGradient:
                 plt.savefig(outpath)
                 plt.close(fig)  # close to free memory
 
-            # End of the "TODO" block
+            # End of PLOT block
 
     def _save_model(self, episode):
         d = f"{self._checkpoint_dir}-{episode}"

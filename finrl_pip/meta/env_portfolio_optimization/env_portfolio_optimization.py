@@ -164,7 +164,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._sell_indicator_threshold = sell_indicator_threshold
         self._turbulence = 0
         self._detailed_actions_memory = []
-        self._start_timestamp = dt.now()
+        self._start_timestamp = None
         self._mode = mode
         self.detailed_actions_file = detailed_actions_file
         self._transaction_cost = 0
@@ -360,14 +360,13 @@ class PortfolioOptimizationEnv(gym.Env):
                 weights = np.asarray(weights)
 
             # CALCULATE TODAY'S PORTFOLIO USING WEIGHTS ON PREV DAY - MIFTAH
-            # MOVED FROM LINE 448 BELOW
             if self._first_episode:
                 tmp = [0] * len(self._info["tics"].tolist())
                 self._prev_weights = [1] + tmp
                 self._first_episode = False
             portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
             # so, i moved self._portfolio_value here so it will not reset the value after the cost fee model calculation
-            # previously, below line is in line 454
+            # previously, below line is in line 487
             # https://git.tuntun.co.id/ai/poc/finrl/-/blob/3cb5e51f748a9c12d768f6c9ef0ff27a99edcf60/finrl_pip/meta/env_portfolio_optimization/env_portfolio_optimization.py#L487
             self._portfolio_value = np.sum(portfolio)
 
@@ -484,7 +483,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 daily_log[f"{ticker}_v"] = self._price_variation[i]
 
             # calculate new portfolio value and weights
-            # self._portfolio_value = np.sum(portfolio) # MOVED TO LINE 341
+            # self._portfolio_value = np.sum(portfolio) # MOVED TO LINE 371
             weights = portfolio / self._portfolio_value
 
             daily_log["portfolio"] = self._portfolio_value
@@ -755,6 +754,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._first_episode = True
         self._prev_weights = None
         self._portfolio_value = self._initial_amount
+        self._start_timestamp = dt.now()
 
     def _standardize_state(self, state):
         """Standardize the state given the observation space. If "return_last_action"
