@@ -98,7 +98,7 @@ from finrl.meta.env_portfolio_optimization.env_portfolio_optimization import Por
 MODE = "train"
 # policy_str setting should be below in policy_kwargs
 # but moved here to facilitate checkpoint_dir naming
-policy_str = "EI3"
+policy_str = "EIIE"
 checkpoint_dir = ""
 if MODE == "train":
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -137,12 +137,12 @@ use_sortino_ratio = True
 # risk_free_rate = 0.05
 risk_free_rate = 0.00013
 # episodes variable is moved here because it's related with save_detailed_step
-episodes = 10
+episodes = 2
 save_detailed_step = 2
 cycle_length = 1
-use_sell_indicator = True
-sell_indicator_column = "turbulence"
-sell_indicator_threshold = 99
+use_sell_indicator = "stoploss_and_takeprofit"
+# sell_indicator_column = "turbulence"
+# sell_indicator_threshold = 99
 
 # detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 detailed_actions_file = checkpoint_dir
@@ -167,8 +167,8 @@ environment_train = PortfolioOptimizationEnv(
         reward_scaling=reward_scaling,
         cycle_length=cycle_length,
         use_sell_indicator=use_sell_indicator,
-        sell_indicator_column=sell_indicator_column,
-        sell_indicator_threshold=sell_indicator_threshold,
+        # sell_indicator_column=sell_indicator_column,
+        # sell_indicator_threshold=sell_indicator_threshold,
     )
 environment_dev = PortfolioOptimizationEnv(
         df_portfolio_dev,
@@ -191,8 +191,8 @@ environment_dev = PortfolioOptimizationEnv(
         reward_scaling=reward_scaling,
         cycle_length=cycle_length,
         use_sell_indicator=use_sell_indicator,
-        sell_indicator_column=sell_indicator_column,
-        sell_indicator_threshold=sell_indicator_threshold,
+        # sell_indicator_column=sell_indicator_column,
+        # sell_indicator_threshold=sell_indicator_threshold,
     )
 environment_test = PortfolioOptimizationEnv(
         df_portfolio_test,
@@ -215,8 +215,8 @@ environment_test = PortfolioOptimizationEnv(
         reward_scaling=reward_scaling,
         cycle_length=cycle_length,
         use_sell_indicator=use_sell_indicator,
-        sell_indicator_column=sell_indicator_column,
-        sell_indicator_threshold=sell_indicator_threshold,
+        # sell_indicator_column=sell_indicator_column,
+        # sell_indicator_threshold=sell_indicator_threshold,
     )
 train_env_conf = {
     "train_range": f"{TRAIN_START_DATE}_{TRAIN_END_DATE}",
@@ -239,8 +239,8 @@ train_env_conf = {
     "risk_free_rate": risk_free_rate,
     "cycle_length": cycle_length,
     "use_sell_indicator": use_sell_indicator,
-    "sell_indicator_column": sell_indicator_column,
-    "sell_indicator_threshold": sell_indicator_threshold,
+    # "sell_indicator_column": sell_indicator_column,
+    # "sell_indicator_threshold": sell_indicator_threshold,
     "save_detailed_step": save_detailed_step,
     "checkpoint_dir": checkpoint_dir
 }
@@ -260,12 +260,14 @@ import torch
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print(device)
 
+policy_map = {
+    "EIIE": EIIE,
+    "EI3": EI3,
+}
 
 lr = 0.01
 action_noise = 0.1
-policy = EIIE
-if policy_str == "EI3":
-    policy = EI3
+policy = policy_map[policy_str]
 use_reward_in_loss = True
 model_kwargs = {
     "lr": lr,

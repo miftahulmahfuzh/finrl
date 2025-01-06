@@ -95,7 +95,7 @@ class PortfolioOptimizationEnv(gym.Env):
         cwd="./",
         new_gym_api=False,
         # below is added by miftah
-        use_sell_indicator=False,
+        use_sell_indicator=None,
         sell_indicator_column="",
         sell_indicator_threshold=99,
         buying_fee_pct=0,
@@ -158,8 +158,10 @@ class PortfolioOptimizationEnv(gym.Env):
         self._cwd = Path(cwd)
         self._new_gym_api = new_gym_api
 
-        # added by miftah to record detailed actions for each day
-        self._use_sell_indicator = use_sell_indicator
+        # below parameters is added by miftah
+        self._raw_df = df
+        self._raw_df[self._time_column] = pd.to_datetime(self._raw_df[self._time_column])
+        self._use_sell_indicator = use_sell_indicator # 'turbulence' / 'stoploss_and_takeprofit'
         self._sell_indicator_column = sell_indicator_column
         self._sell_indicator_threshold = sell_indicator_threshold
         self._turbulence = 0
@@ -169,7 +171,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self.detailed_actions_file = detailed_actions_file
         self._transaction_cost = 0
         self._alpha = alpha # how big is the impact of the transaction cost penalty on reward calculation
-        self._prev_weights = None
+        # self._prev_weights = None
         self._first_episode = True
         self._use_sortino_ratio = use_sortino_ratio
         self._risk_free_rate = risk_free_rate
@@ -193,13 +195,18 @@ class PortfolioOptimizationEnv(gym.Env):
         self._preprocess_data(order_df, normalize_df, tics_in_portfolio)
 
         # dims and spaces
-        self._tic_list = self._df[self._tic_column].unique()
+        self._tic_list = sorted(self._df[self._tic_column].unique())
         self.portfolio_size = (
             len(self._tic_list)
             if tics_in_portfolio == "all"
             else len(tics_in_portfolio)
         )
         action_space = 1 + self.portfolio_size
+
+        # added by miftah
+        self._current_stock_prices = [0] * len(self._tic_list)
+        tmp = [0] * len(self._tic_list)
+        self._prev_weights = np.asarray([1] + tmp)
 
         # sort datetimes and define episode length
         self._sorted_times = sorted(set(self._df[time_column]))
@@ -258,6 +265,13 @@ class PortfolioOptimizationEnv(gym.Env):
             "duration_second": [seconds],
         }
         return pd.DataFrame(data)
+
+    # def _get_num_shares(self, portfolio_value, weights, current_stock_prices):
+    #     num_shares = {}
+    #     for i, ticker in enumerate(self._info["tics"], start=1):
+    #         budget = portfolio_value * weights[i]
+    #         num_shares[ticker] = budget // current_stock_prices[ticker]
+    #     return num_shares
 
     def step(self, actions, episode=0):
         """Performs a simulation step.
@@ -344,34 +358,66 @@ class PortfolioOptimizationEnv(gym.Env):
             # load next state
             # self._time_index += 1
             self._time_index += self._cycle_length
-            self._state, self._info, self._turbulence = self._get_state_and_info_from_time_index(
+            self._state, self._info, self._turbulence, self._current_stock_prices = self._get_state_and_info_from_time_index(
                 self._time_index
             )
+
             # USING TURBULENCE AS SELL INDICATOR - MIFTAH
             sell_all = False
             # print(f"TURBULENCE: {self._turbulence}")
             if self._use_sell_indicator:
-                if self._turbulence > self._sell_indicator_threshold:
-                    sell_all = True
-            if sell_all:
-                # print(f"SELL ALL: {sell_all}\nTURBULENCE: {self._turbulence}\nTHRESHOLD: {self._sell_indicator_threshold}")
-                tmp = [0] * len(self._info["tics"].tolist())
-                weights = [1] + tmp
-                weights = np.asarray(weights)
+                if self._use_sell_indicator == "turbulence":
+                    if self._turbulence > self._sell_indicator_threshold:
+                        sell_all = True
+                    if sell_all:
+                        # print(f"SELL ALL: {sell_all}\nTURBULENCE: {self._turbulence}\nTHRESHOLD: {self._sell_indicator_threshold}")
+                        tmp = [0] * len(self._info["tics"].tolist())
+                        weights = [1] + tmp
+                        weights = np.asarray(weights)
 
             # CALCULATE TODAY'S PORTFOLIO USING WEIGHTS ON PREV DAY - MIFTAH
+            self._asset_memory["initial"].append(self._portfolio_value)
             if self._first_episode:
-                tmp = [0] * len(self._info["tics"].tolist())
+                tmp = [0] * len(self._info["tics"])
                 self._prev_weights = [1] + tmp
                 self._first_episode = False
             portfolio = self._portfolio_value * (self._prev_weights * self._price_variation)
-            # so, i moved self._portfolio_value here so it will not reset the value after the cost fee model calculation
-            # previously, below line is in line 487
-            # https://git.tuntun.co.id/ai/poc/finrl/-/blob/3cb5e51f748a9c12d768f6c9ef0ff27a99edcf60/finrl_pip/meta/env_portfolio_optimization/env_portfolio_optimization.py#L487
+            # so, i moved self._portfolio_value here so it will not reset the value reduction of cost_fee_model calculation
+            # previously, this line is in line 487
             self._portfolio_value = np.sum(portfolio)
 
             self._interim_portfolio_value = np.sum(portfolio)
 
+            if self._use_sell_indicator:
+                if self._use_sell_indicator == "stoploss_and_takeprofit":
+                    # CALCULATE TOTAL PRICE FOR STOP_LOSS FORMULA - v0
+                    # total_price = 0
+                    # num_shares = self._get_num_shares(
+                    #         self._portfolio_value, weights,
+                    #         self._current_stock_prices)
+                    # for i, ticker in enumerate(self._info["tics"], start=1):
+                    #     # ticker_price = weights[i] * self._current_stock_prices[ticker]
+                    #     ticker_price = num_shares[ticker] * self._current_stock_prices[ticker]
+                    #     total_price += ticker_price
+                    # min_price = .95 * self._asset_memory["final"][-1]
+                    # stop_loss = total_price < min_price
+
+                    # v1
+                    min_value = .95 * self._asset_memory["final"][0]
+                    stop_loss = self._interim_portfolio_value < min_value
+
+                    # if total_price is 5% lower than the portfolio value of the previous day,
+                    # then we hold funds (dont do transactions on this day)
+                    if stop_loss:
+                        # print(f"MIN_VALUE: {min_value}\nINTERIM: {self._interim_portfolio_value}")
+                        # print(f"PREV_WEIGHTS: {self._prev_weights}")
+                        # print(f"WEIGHTS: {weights}\n")
+                        weights = self._prev_weights
+                    # else:
+                        # print(f"SAVE TO TRADE")
+                        # print(f"MIN_VALUE: {min_value}\nINTERIM: {self._interim_portfolio_value}")
+                        # print(f"PREV_WEIGHTS: {self._prev_weights}")
+                        # print(f"WEIGHTS: {weights}\n")
             # save initial portfolio weights for this time step
             self._actions_memory.append(weights)
 
@@ -381,7 +427,7 @@ class PortfolioOptimizationEnv(gym.Env):
             # load next state
             # self._time_index += 1
             # self._time_index += self._cycle_length
-            # self._state, self._info, self._turbulence = self._get_state_and_info_from_time_index(
+            # self._state, self._info, self._turbulence, self._current_stock_prices = self._get_state_and_info_from_time_index(
             #     self._time_index
             # )
 
@@ -459,7 +505,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 # **TRF_V2 SECTION END**
 
             # save initial portfolio value of this time step
-            self._asset_memory["initial"].append(self._portfolio_value)
+            # self._asset_memory["initial"].append(self._portfolio_value)
             self._prev_weights = weights
 
             date_str = self._info["end_time"].strftime("%Y-%m-%d")
@@ -476,7 +522,7 @@ class PortfolioOptimizationEnv(gym.Env):
             # CALCULATE WEIGHTS PERCENT - MIFTAH
             weights_percent = weights * 100
             weights_percent[weights_percent < 0.01] = 0  # Set small weights to zero
-            weight_details = ["CASH"] + self._info["tics"].tolist() # add column for cash allocation
+            weight_details = ["CASH"] + self._info["tics"] # add column for cash allocation
             for i, ticker in enumerate(weight_details):
                 daily_log[ticker] = weights_percent[i]
             for i, ticker in enumerate(weight_details):
@@ -574,7 +620,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._time_index = self._time_window - 1
         self._reset_memory()
 
-        self._state, self._info, self._turbulence = self._get_state_and_info_from_time_index(
+        self._state, self._info, self._turbulence, self._current_stock_prices = self._get_state_and_info_from_time_index(
             self._time_index
         )
         self._portfolio_value = self._initial_amount
@@ -605,7 +651,7 @@ class PortfolioOptimizationEnv(gym.Env):
             info: A dictionary with some informations about the current simulation
                 step. The dict has the following keys::
 
-                {
+            {
                 "tics": List of ticker symbols,
                 "start_time": Start time of current time window,
                 "start_time_index": Index of start time of current time window,
@@ -613,7 +659,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 "data": Data related to the current time window,
                 "end_time_index": Index of end time of current time window,
                 "price_variation": Price variation of current time step
-                }
+            }
         """
         # returns state in form (channels, tics, timesteps)
         end_time = self._sorted_times[time_index]
@@ -639,6 +685,17 @@ class PortfolioOptimizationEnv(gym.Env):
             self._df[self._time_column] == end_time
         ][self._sell_indicator_column].iloc[0]
 
+        # get stock price value
+        current_stock_prices = {}
+        for tic in self._tic_list:
+            tic_data = self._raw_df[self._raw_df[self._tic_column] == tic]
+            # print(f"TIC_DATA: {tic_data}")
+            tic_stock_price = tic_data[
+                tic_data[self._time_column] == end_time
+            ][self._valuation_feature].iloc[0]
+            current_stock_prices[tic] = tic_stock_price
+        # print(f"CURRENT STOCK PRICES:\n{current_stock_prices}")
+
         # define state to be returned
         state = None
         for tic in self._tic_list:
@@ -656,7 +713,7 @@ class PortfolioOptimizationEnv(gym.Env):
             "data": self._data,
             "price_variation": self._price_variation,
         }
-        return self._standardize_state(state), info, turbulence
+        return self._standardize_state(state), info, turbulence, current_stock_prices
 
     def render(self, mode="human"):
         """Renders the environment.
@@ -752,7 +809,8 @@ class PortfolioOptimizationEnv(gym.Env):
         # added by miftah
         self._detailed_actions_memory = []
         self._first_episode = True
-        self._prev_weights = None
+        tmp = [0] * len(self._tic_list)
+        self._prev_weights = np.asarray([1] + tmp)
         self._portfolio_value = self._initial_amount
         self._start_timestamp = dt.now()
 
