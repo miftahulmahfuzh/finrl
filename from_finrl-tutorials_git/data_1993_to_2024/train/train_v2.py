@@ -140,9 +140,12 @@ risk_free_rate = 0.00013
 episodes = 2
 save_detailed_step = 2
 cycle_length = 1
-use_sell_indicator = "stoploss_and_takeprofit"
+# use_sell_indicator = "stoploss_and_takeprofit"
+use_sell_indicator = None
 # sell_indicator_column = "turbulence"
 # sell_indicator_threshold = 99
+stop_loss_threshold = .05
+take_profit_threshold = .8
 
 # detailed_actions_file = f"{d}/result_eiie_{MODE}.xlsx"
 detailed_actions_file = checkpoint_dir
@@ -169,6 +172,8 @@ environment_train = PortfolioOptimizationEnv(
         use_sell_indicator=use_sell_indicator,
         # sell_indicator_column=sell_indicator_column,
         # sell_indicator_threshold=sell_indicator_threshold,
+        stop_loss_threshold=stop_loss_threshold,
+        take_profit_threshold=take_profit_threshold,
     )
 environment_dev = PortfolioOptimizationEnv(
         df_portfolio_dev,
@@ -193,6 +198,8 @@ environment_dev = PortfolioOptimizationEnv(
         use_sell_indicator=use_sell_indicator,
         # sell_indicator_column=sell_indicator_column,
         # sell_indicator_threshold=sell_indicator_threshold,
+        stop_loss_threshold=stop_loss_threshold,
+        take_profit_threshold=take_profit_threshold,
     )
 environment_test = PortfolioOptimizationEnv(
         df_portfolio_test,
@@ -217,6 +224,8 @@ environment_test = PortfolioOptimizationEnv(
         use_sell_indicator=use_sell_indicator,
         # sell_indicator_column=sell_indicator_column,
         # sell_indicator_threshold=sell_indicator_threshold,
+        stop_loss_threshold=stop_loss_threshold,
+        take_profit_threshold=take_profit_threshold,
     )
 train_env_conf = {
     "train_range": f"{TRAIN_START_DATE}_{TRAIN_END_DATE}",
@@ -241,6 +250,8 @@ train_env_conf = {
     "use_sell_indicator": use_sell_indicator,
     # "sell_indicator_column": sell_indicator_column,
     # "sell_indicator_threshold": sell_indicator_threshold,
+    "stop_loss_threshold": stop_loss_threshold,
+    "take_profit_threshold": take_profit_threshold,
     "save_detailed_step": save_detailed_step,
     "checkpoint_dir": checkpoint_dir
 }
