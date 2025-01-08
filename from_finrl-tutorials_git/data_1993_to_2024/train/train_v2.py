@@ -137,11 +137,11 @@ use_sortino_ratio = True
 # risk_free_rate = 0.05
 risk_free_rate = 0.00013
 # episodes variable is moved here because it's related with save_detailed_step
-episodes = 2
-save_detailed_step = 2
+episodes = 100
+save_detailed_step = 25
 cycle_length = 1
-# use_sell_indicator = "stoploss_and_takeprofit"
-use_sell_indicator = None
+use_sell_indicator = "stoploss_and_takeprofit"
+# use_sell_indicator = None
 # sell_indicator_column = "turbulence"
 # sell_indicator_threshold = 99
 stop_loss_threshold = .05

@@ -164,6 +164,7 @@ class PortfolioOptimizationEnv(gym.Env):
         self._raw_df = df
         self._raw_df[self._time_column] = pd.to_datetime(self._raw_df[self._time_column])
         self._use_sell_indicator = use_sell_indicator # 'turbulence' / 'stoploss_and_takeprofit'
+        print(f"USE_SELL_INDICATOR: {self._use_sell_indicator}")
         self._sell_indicator_column = sell_indicator_column
         self._turbulence_threshold = turbulence_threshold
         self._stop_loss_threshold = stop_loss_threshold
@@ -388,40 +389,42 @@ class PortfolioOptimizationEnv(gym.Env):
             self._interim_portfolio_value = np.sum(portfolio)
 
             if self._use_sell_indicator == "stoploss_and_takeprofit":
-                # STOP_LOSS_RULE
-                min_value = (1-self._stop_loss_threshold) * self._asset_memory["final"][0]
-                stop_loss = self._interim_portfolio_value < min_value
+                if len(self._asset_memory["final"]) > 1:
+                    first_day_portfolio = self._asset_memory["final"][1]
+                    # STOP_LOSS_RULE
+                    min_value_to_stop_loss = (1-self._stop_loss_threshold) * first_day_portfolio
+                    stop_loss = self._interim_portfolio_value < min_value_to_stop_loss
 
-                # if total_price is 5% lower than the portfolio value of the previous day,
-                # then we hold funds (dont do transactions on this day)
-                if stop_loss:
-                    # print(f"MIN_VALUE: {min_value}\nINTERIM: {self._interim_portfolio_value}")
-                    # print(f"PREV_WEIGHTS: {self._prev_weights}")
-                    # print(f"WEIGHTS: {weights}\n")
-                    weights = self._prev_weights
-                # else:
-                    # print(f"IT IS SAVE TO TRADE")
-                    # print(f"MIN_VALUE: {min_value}\nINTERIM: {self._interim_portfolio_value}")
-                    # print(f"PREV_WEIGHTS: {self._prev_weights}")
-                    # print(f"WEIGHTS: {weights}\n")
+                    # if total_price is 5% lower than the portfolio value of the previous day,
+                    # then we hold funds (dont do transactions on this day)
+                    if stop_loss:
+                        # print(f"MIN_VALUE: {min_value}\nINTERIM: {self._interim_portfolio_value}")
+                        # print(f"PREV_WEIGHTS: {self._prev_weights}")
+                        # print(f"WEIGHTS: {weights}\n")
+                        weights = self._prev_weights
+                    # else:
+                        # print(f"IT IS SAVE TO TRADE")
+                        # print(f"MIN_VALUE: {min_value}\nINTERIM: {self._interim_portfolio_value}")
+                        # print(f"PREV_WEIGHTS: {self._prev_weights}")
+                        # print(f"WEIGHTS: {weights}\n")
 
-                # TAKE_PROFIT_RULE
-                self._latest_profit = self._interim_portfolio_value - self._asset_memory["final"][0]
-                min_value = self._take_profit_threshold * self._max_profit
-                take_profit = latest_profit > min_value
-                # if the latest_profit minimum reached 80% of the max profit,
-                # then we do trading on that day (we use the model actions), otherwise, we hold
-                # print(f"TRADING DATE: {self._trading_date}")
-                # print(f"MAX_PROFIT: {self._max_profit}")
-                # print(f"LATEST PROFIT: {latest_profit}")
-                if take_profit:
-                    # print(f"LATEST PROFIT REACHED 80% OF MAX_PROFIT\n")
-                    pass
-                else:
-                    # print(f"LATEST PROFIT IS NOT ENOUGH. AVOIDING TRANSACTIONS FOR TODAY")
-                    weights = self._prev_weights
-                self._max_profit = max(latest_profit, self._max_profit)
-
+                    # TAKE_PROFIT_RULE
+                    # if not stop_loss:
+                    self._latest_profit = self._interim_portfolio_value - first_day_portfolio
+                    min_value_to_take_profit = self._take_profit_threshold * self._max_profit
+                    take_profit = self._latest_profit >= min_value_to_take_profit
+                    # if the latest_profit minimum reached 80% of the max profit,
+                    # then we do trading on that day (we use the model actions), otherwise, we hold
+                    # print(f"TRADING DATE: {self._trading_date}")
+                    # print(f"MAX_PROFIT: {self._max_profit}")
+                    # print(f"LATEST PROFIT: {latest_profit}")
+                    if take_profit:
+                        # print(f"LATEST PROFIT REACHED 80% OF MAX_PROFIT\n")
+                        pass
+                    else:
+                        # print(f"LATEST PROFIT IS NOT ENOUGH. AVOIDING TRANSACTIONS FOR TODAY")
+                        weights = self._prev_weights
+                    self._max_profit = max(self._latest_profit, self._max_profit)
 
             # save initial portfolio weights for this time step
             self._actions_memory.append(weights)
@@ -519,15 +522,15 @@ class PortfolioOptimizationEnv(gym.Env):
                 "portfolio": self._portfolio_value,
                 "interim_portfolio": self._interim_portfolio_value,
                 # "turbulence": self._turbulence,
-                "latest_profit": self._latest_profit,
+                "today_profit": self._latest_profit,
                 "max_profit": self._max_profit,
                 "buying_cost": self._buying_cost,
                 "selling_cost": self._selling_cost,
                 "transaction_cost": self._transaction_cost,
             }
-            if not self._use_sell_indicator:
-                daily_log.pop("latest_profit")
-                daily_log.pop("max_profit")
+            # if self._use_sell_indicator != "stoploss_and_takeprofit":
+            #     daily_log.pop("today_profit")
+            #     daily_log.pop("max_profit")
 
             # CALCULATE WEIGHTS PERCENT - MIFTAH
             weights_percent = weights * 100
