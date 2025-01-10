@@ -6,4 +6,5 @@ csv/
 *.csv
 *.pyc
 *.json
+*.rar
 __pycache__/

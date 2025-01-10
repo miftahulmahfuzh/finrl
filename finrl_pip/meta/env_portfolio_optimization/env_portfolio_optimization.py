@@ -164,7 +164,6 @@ class PortfolioOptimizationEnv(gym.Env):
         self._raw_df = df
         self._raw_df[self._time_column] = pd.to_datetime(self._raw_df[self._time_column])
         self._use_sell_indicator = use_sell_indicator # 'turbulence' / 'stoploss_and_takeprofit'
-        print(f"USE_SELL_INDICATOR: {self._use_sell_indicator}")
         self._sell_indicator_column = sell_indicator_column
         self._turbulence_threshold = turbulence_threshold
         self._stop_loss_threshold = stop_loss_threshold
@@ -387,7 +386,7 @@ class PortfolioOptimizationEnv(gym.Env):
             self._portfolio_value = np.sum(portfolio)
 
             self._interim_portfolio_value = np.sum(portfolio)
-
+            reallocate_today = True
             if self._use_sell_indicator == "stoploss_and_takeprofit":
                 if len(self._asset_memory["final"]) > 1:
                     first_day_portfolio = self._asset_memory["final"][1]
@@ -402,6 +401,7 @@ class PortfolioOptimizationEnv(gym.Env):
                         # print(f"PREV_WEIGHTS: {self._prev_weights}")
                         # print(f"WEIGHTS: {weights}\n")
                         weights = self._prev_weights
+                        reallocate_today = False
                     # else:
                         # print(f"IT IS SAVE TO TRADE")
                         # print(f"MIN_VALUE: {min_value}\nINTERIM: {self._interim_portfolio_value}")
@@ -409,7 +409,6 @@ class PortfolioOptimizationEnv(gym.Env):
                         # print(f"WEIGHTS: {weights}\n")
 
                     # TAKE_PROFIT_RULE
-                    # if not stop_loss:
                     self._latest_profit = self._interim_portfolio_value - first_day_portfolio
                     min_value_to_take_profit = self._take_profit_threshold * self._max_profit
                     take_profit = self._latest_profit >= min_value_to_take_profit
@@ -420,88 +419,42 @@ class PortfolioOptimizationEnv(gym.Env):
                     # print(f"LATEST PROFIT: {latest_profit}")
                     if take_profit:
                         # print(f"LATEST PROFIT REACHED 80% OF MAX_PROFIT\n")
+                        # print(f"WE REALLOCATE STOCKS TODAY")
                         pass
                     else:
                         # print(f"LATEST PROFIT IS NOT ENOUGH. AVOIDING TRANSACTIONS FOR TODAY")
                         weights = self._prev_weights
+                        reallocate_today = False
                     self._max_profit = max(self._latest_profit, self._max_profit)
 
             # save initial portfolio weights for this time step
             self._actions_memory.append(weights)
 
-            # get last step final weights and portfolio_value
-            last_weights = self._final_weights[-1]
-
-            # load next state
-            # self._time_index += 1
-            # self._time_index += self._cycle_length
-            # self._state, self._info, self._turbulence, self._current_stock_prices = self._get_state_and_info_from_time_index(
-            #     self._time_index
-            # )
-
-            # if using weights vector modifier, we need to modify weights vector
-            if self._comission_fee_model == "wvm":
-                delta_weights = weights - last_weights
-                delta_assets = delta_weights[1:]  # disconsider
-                # calculate fees considering weights modification
-                fees = np.sum(np.abs(delta_assets * self._portfolio_value))
-
-                # Store transaction cost for tracking
-                self._transaction_cost = fees
-                # self._info["transaction_cost"] = fees
-
-                if fees > weights[0] * self._portfolio_value:
-                    weights = last_weights
-                    # maybe add negative reward
-                else:
-                    portfolio = weights * self._portfolio_value
-                    portfolio[0] -= fees
-                    self._portfolio_value = np.sum(portfolio)  # new portfolio value
-                    weights = portfolio / self._portfolio_value  # new weights
-            elif self._comission_fee_model == "trf":
-                last_mu = 1
-                mu = 1 - 2 * self._comission_fee_pct + self._comission_fee_pct**2
-                while abs(mu - last_mu) > 1e-10:
-                    last_mu = mu
-                    mu = (
-                        1
-                        - self._comission_fee_pct * weights[0]
-                        - (2 * self._comission_fee_pct - self._comission_fee_pct**2)
-                        * np.sum(np.maximum(last_weights[1:] - mu * weights[1:], 0))
-                    ) / (1 - self._comission_fee_pct * weights[0])
-                self._info["trf_mu"] = mu
-                self._portfolio_value = mu * self._portfolio_value
-                self._transaction_cost = 1 - mu
-            elif self._comission_fee_model == "trf_v2":
+            if self._comission_fee_model == "trf_v2":
                 # **TRF_V2 SECTION START - MIFTAH**
+                self._selling_cost = 0
+                self._buying_cost = 0
 
                 buying_fee_pct = self._buying_fee_pct  # Separate buying fee percentage
                 selling_fee_pct = self._selling_fee_pct  # Separate selling fee percentage
-                last_mu = 1.0
                 # Initialize mu considering both buying and selling fees
                 mu = 1.0 - buying_fee_pct - selling_fee_pct
 
-                # Iteratively solve for mu to account for transaction costs
-                max_iterations = 1000
-                iteration = 0
-                tolerance = 1e-10
+                if reallocate_today:
+                    # Calculate w_i based on price variation
+                    ltmp = self._prev_weights * self._price_variation
+                    w_i = np.zeros_like(ltmp)
+                    if np.sum(ltmp) > 0:
+                        w_i = ltmp / np.sum(ltmp)
 
-                # Calculate w_i based on price variation
-                ltmp = self._prev_weights * self._price_variation
-                w_i = np.zeros_like(ltmp)
-                if np.sum(ltmp) > 0:
-                    w_i = ltmp / np.sum(ltmp)
+                    selling_reduction = np.maximum(w_i[1:] - weights[1:], 0)
+                    selling_cost = selling_fee_pct * np.sum(selling_reduction)
+                    buying_increase = np.maximum(weights[1:] - w_i[1:], 0)
+                    buying_cost = buying_fee_pct * np.sum(buying_increase)
 
-                # After finding mu, calculate selling and buying costs (MU REMOVED) - V2
-                date_str = self._info["end_time"].strftime("%Y-%m-%d")
-                selling_reduction = np.maximum(w_i[1:] - weights[1:], 0)
-                selling_cost = selling_fee_pct * np.sum(selling_reduction)
-                buying_increase = np.maximum(weights[1:] - w_i[1:], 0)
-                buying_cost = buying_fee_pct * np.sum(buying_increase)
-
-                # Assign separate transaction costs
-                self._selling_cost = selling_cost
-                self._buying_cost = buying_cost
+                    # Assign separate transaction costs
+                    self._selling_cost = selling_cost
+                    self._buying_cost = buying_cost
 
                 # Calculate total transaction cost
                 self._transaction_cost = self._selling_cost + self._buying_cost
@@ -527,6 +480,7 @@ class PortfolioOptimizationEnv(gym.Env):
                 "buying_cost": self._buying_cost,
                 "selling_cost": self._selling_cost,
                 "transaction_cost": self._transaction_cost,
+                "reallocate_today": reallocate_today,
             }
             # if self._use_sell_indicator != "stoploss_and_takeprofit":
             #     daily_log.pop("today_profit")
@@ -776,11 +730,15 @@ class PortfolioOptimizationEnv(gym.Env):
         if order:
             self._df = self._df.sort_values(by=[self._tic_column, self._time_column])
         # defining price variation after ordering dataframe
-        self._df_price_variation = self._temporal_variation_df()
-
-        # SAVE PRICE VARIATION - MIFTAH
-        # pv_path = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_price_variation_v3-a_{self._mode}_12_features.csv"
-        # self._df_price_variation.to_csv(pv_path, index=False)
+        pv_path = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_price_variation_v5_{self._mode}_9_features.csv"
+        self._df_price_variation = None
+        if os.path.isfile(pv_path):
+            self._df_price_variation = pd.read_csv(pv_path)
+            print(f"\nLOADED PRICE VARIATION DATA FROM:\n{pv_path}")
+        else:
+            self._df_price_variation = self._temporal_variation_df()
+            self._df_price_variation.to_csv(pv_path, index=False)
+            print(f"\nSAVED PRICE VARIATION DATA TO:\n{pv_path}")
 
         # select only stocks in portfolio
         if tics_in_portfolio != "all":
@@ -831,6 +789,10 @@ class PortfolioOptimizationEnv(gym.Env):
         self._portfolio_value = self._initial_amount
         self._start_timestamp = dt.now()
 
+        # if self._mode in ["dev", "test"]:
+        self._latest_profit = 0
+        self._max_profit = -1
+
     def _standardize_state(self, state):
         """Standardize the state given the observation space. If "return_last_action"
         is set to False, a three-dimensional box is returned. If it's set to True, a
@@ -870,7 +832,15 @@ class PortfolioOptimizationEnv(gym.Env):
                 self._df = self._temporal_variation_df(self._time_window - 1)
             elif normalize == "by_previous_time":
                 print(f"Normalizing {self._features} for data {self._mode} by previous time...")
-                self._df = self._temporal_variation_df()
+                pv_path = f"/home/devmiftahul/trading_model/from_finrl-tutorials_git/data_1993_to_2024/combined_data/75_tic_price_variation_v5_{self._mode}_9_features.csv"
+                self._df = None
+                if os.path.isfile(pv_path):
+                    self._df = pd.read_csv(pv_path)
+                    print(f"LOADED NORMALIZED DATA FROM:\n{pv_path}")
+                else:
+                    self._df = self._temporal_variation_df()
+                    self._df.to_csv(pv_path, index=False)
+                    print(f"SAVED NORMALIZED DATA TO:\n{pv_path}")
             elif normalize.startswith("by_"):
                 normalizer_column = normalize[3:]
                 print(f"Normalizing {self._features} by {normalizer_column}")
