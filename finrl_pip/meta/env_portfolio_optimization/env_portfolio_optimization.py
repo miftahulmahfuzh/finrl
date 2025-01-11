@@ -98,7 +98,8 @@ class PortfolioOptimizationEnv(gym.Env):
         use_sell_indicator=None,
         sell_indicator_column="",
         turbulence_threshold=99,
-        take_profit_threshold=.8,
+        take_profit_threshold_1=.8,
+        take_profit_threshold_2=.05,
         stop_loss_threshold=.05,
         buying_fee_pct=0,
         selling_fee_pct=0,
@@ -167,7 +168,8 @@ class PortfolioOptimizationEnv(gym.Env):
         self._sell_indicator_column = sell_indicator_column
         self._turbulence_threshold = turbulence_threshold
         self._stop_loss_threshold = stop_loss_threshold
-        self._take_profit_threshold = take_profit_threshold
+        self._take_profit_threshold_1 = take_profit_threshold_1
+        self._take_profit_threshold_2 = take_profit_threshold_2
         self._latest_profit = 0
         self._max_profit = -1
         self._turbulence = 0
@@ -401,31 +403,46 @@ class PortfolioOptimizationEnv(gym.Env):
                         # print(f"PREV_WEIGHTS: {self._prev_weights}")
                         # print(f"WEIGHTS: {weights}\n")
                         weights = self._prev_weights
-                        reallocate_today = False
+                        # reallocate_today = False
                     # else:
                         # print(f"IT IS SAVE TO TRADE")
                         # print(f"MIN_VALUE: {min_value}\nINTERIM: {self._interim_portfolio_value}")
                         # print(f"PREV_WEIGHTS: {self._prev_weights}")
                         # print(f"WEIGHTS: {weights}\n")
 
-                    # TAKE_PROFIT_RULE
+                    # TAKE_PROFIT_RULE - v1
+                    # self._latest_profit = self._interim_portfolio_value - first_day_portfolio
+                    # min_value_to_take_profit = self._take_profit_threshold * self._max_profit
+                    # take_profit = self._latest_profit >= min_value_to_take_profit
+                    # # if the latest_profit minimum reached 80% of the max profit,
+                    # # then we do trading on that day (we use the model actions), otherwise, we hold
+                    # # print(f"TRADING DATE: {self._trading_date}")
+                    # # print(f"MAX_PROFIT: {self._max_profit}")
+                    # # print(f"LATEST PROFIT: {latest_profit}")
+                    # if take_profit:
+                    #     # print(f"LATEST PROFIT REACHED 80% OF MAX_PROFIT\n")
+                    #     # print(f"WE REALLOCATE STOCKS TODAY")
+                    #     pass
+                    # else:
+                    #     # print(f"LATEST PROFIT IS NOT ENOUGH. AVOIDING TRANSACTIONS FOR TODAY")
+                    #     weights = self._prev_weights
+                    #     reallocate_today = False
+                    # self._max_profit = max(self._latest_profit, self._max_profit)
+
+                    # TAKE_PROFIT_RULE - v2
                     self._latest_profit = self._interim_portfolio_value - first_day_portfolio
-                    min_value_to_take_profit = self._take_profit_threshold * self._max_profit
-                    take_profit = self._latest_profit >= min_value_to_take_profit
-                    # if the latest_profit minimum reached 80% of the max profit,
-                    # then we do trading on that day (we use the model actions), otherwise, we hold
-                    # print(f"TRADING DATE: {self._trading_date}")
-                    # print(f"MAX_PROFIT: {self._max_profit}")
-                    # print(f"LATEST PROFIT: {latest_profit}")
-                    if take_profit:
-                        # print(f"LATEST PROFIT REACHED 80% OF MAX_PROFIT\n")
-                        # print(f"WE REALLOCATE STOCKS TODAY")
-                        pass
-                    else:
-                        # print(f"LATEST PROFIT IS NOT ENOUGH. AVOIDING TRANSACTIONS FOR TODAY")
-                        weights = self._prev_weights
-                        reallocate_today = False
                     self._max_profit = max(self._latest_profit, self._max_profit)
+                    a = self._max_profit > (1 + self._take_profit_threshold_2) * first_day_portfolio
+                    b = self._latest_profit < self._take_profit_threshold_1 * self._max_profit
+                    take_profit = a and b
+                    if take_profit:
+                        # if take_profit==True, we sell everything today
+                        tmp = [0] * len(self._info["tics"])
+                        weights = [1] + tmp
+                        weights = np.asarray(weights)
+                        # reallocate_today = True
+
+                    reallocate_today = stop_loss or take_profit
 
             # save initial portfolio weights for this time step
             self._actions_memory.append(weights)
